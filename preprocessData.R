@@ -9,7 +9,7 @@ source("/pl/active/dow_lab/dylan/repos/scrna-seq/analysis-code/customFunctions_S
 
 #set output name -- recommend including data and sample size
 experiment <- "bm_cd34_analysis_240131"
-outName <- "allCells"
+outName <- "allCells_SCT"
 
 nFeature_RNA_high <- 5500
 nFeature_RNA_low <- 100
@@ -34,7 +34,7 @@ seu.obj <- integrateData(din = "../output/s1/", dout = "../output/s2/", outName 
 
 #complete data visualization
 for (x in list("integrated.cca", "integrated.harmony", "integrated.joint", "integrated.rcpa")) {
-    seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = x, 
+    seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = paste0(outName, "_", x), 
                            final.dims = 30, final.res = 0.6, stashID = "clusterID", algorithm = 3, min.dist = 0.1, n.neighbors = 10,
                            prefix = "SCT_snn_res.", assay = "SCT", reduction = x,
                            saveRDS = F, return_obj = T, returnFeats = T,
