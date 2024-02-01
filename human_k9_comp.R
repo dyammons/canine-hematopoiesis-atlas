@@ -55,13 +55,18 @@ dog.meta <- "minorIdent"
 seu.obj.k9 <- readRDS("../output/s3/bm_cd34_analysis_231211_v5_integrated_res0.6_dims45_dist0.1_neigh10_S3.rds")
 
 #split then merge objects
-message(paste0(Sys.time(), " INFO: merging data from k9 and human."))
+message(paste0(Sys.time(), " INFO: splitting data from k9 and human."))
 seu.list <- c(SplitObject(seu.obj.k9, split.by = "orig.ident"), SplitObject(seu.obj, split.by = "orig.ident"))
+seu.list <- lapply(1:length(seu.list), function(i){
+    CreateSeuratObject(seu.list[[i]]@assays$RNA@layers$counts, project = names(seu.list)[i], assay = "RNA", meta.data = seu.list[[i]]@meta.data)
+})
+
+message(paste0(Sys.time(), " INFO: merging data from k9 and human."))
 seu.merge <- merge(seu.list[1][[1]], y = seu.list[2:length(seu.list)],
                   add.cell.ids = names(seu.list), 
                   project = "hu_k9_comp"
                  )
-
+rm(seu.list)
 gc()
 
 #integrate the data
