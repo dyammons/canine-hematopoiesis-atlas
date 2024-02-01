@@ -1,0 +1,14 @@
+clusterID,Cibersort,majorIdent,minorIdent
+0,include,Lymphoid,CD34pos_PreB
+1,include,Granulocyte,CD34pos_GMP
+2,include,HSPC,CD34pos_LateMPP_CMP
+3,include,HSPC,CD34pos_HSC_EarlyMPP
+4,exclude,exclude,Cycling_1
+5,include,Erythroid,CD34pos_MEP
+6,include,Lymphoid,CD34pos_CLP_Early_Pro_B
+7,include,Lymphoid,CD34pos_ProB
+8,include,Unknown,CD34pos_MLP_MDP-like
+9,include,Lymphoid,ProB_to_PreB
+10,exclude,exclude,Cycling_2
+11,exclude,T_cells,T_cells
+12,exclude,Endothelial,Endothelial
