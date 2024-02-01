@@ -1,0 +1,8 @@
+*.sif
+.ipynb_checkpoints/
+Rplots.pdf
+logFiles
+*.log
+r4.3.2-seuratv5_v2
+*.sbatch
+*.img
