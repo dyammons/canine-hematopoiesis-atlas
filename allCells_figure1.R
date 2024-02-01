@@ -3,6 +3,9 @@
 #load custom functions & packages
 source("./customFunctions_Seuratv5.R")
 
+################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#######   begin additional preprocessing   ######## <<<<<<<<<<<<<<
+################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 #load in preprocessed data
 seu.obj <- readRDS("../output/s3/bm_cd34_analysis_231211_v5_integrated_res0.6_dims45_dist0.1_neigh10_S3.rds")
@@ -57,24 +60,22 @@ ggsave(paste0("../output/", outName, "/", outName, "_umap_harmony_all_clusID.png
 
 
 ### Supp data - generate violin plots of defining features
-# vilnPlots(seu.obj = seu.obj, groupBy = "clusterID_integrated.harmony", numOfFeats = 24, outName = "bm_cd34_clusterID_integrated.harmony",
-#             outDir = "../output/viln/allCells/", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"), assay = "RNA", 
-#             min.pct = 0.25, only.pos = T)
+vilnPlots(seu.obj = seu.obj, groupBy = "clusterID_integrated.harmony", numOfFeats = 24, outName = "bm_cd34_clusterID_integrated.harmony",
+            outDir = "../output/viln/allCells/", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"), assay = "RNA", 
+            min.pct = 0.25, only.pos = T)
 
 
-#remove disconnected populations that do not connect to lineages (T cells, Macrophage, and Plasma cells)
+#remove disconnected populations that do not connect to lineages (T cells = 16 & 22, Macrophage = 20, eosinophils = 21, endothelial = 23, and Plasma cells = 19)
 seu.obj <- subset(seu.obj, invert = T, subset = clusterID_integrated.harmony %in% c(16,19,20,21,22,23))
-
-
 
 #integrate the data using all of the four Seurat v5 integration methods
 seu.obj <- integrateData(dout = "../output/s2/", outName = "bm_cd34_subset_analysis_231211_v5", runAllMethods = TRUE,
                         indReClus = T, seu.obj = seu.obj)
 
 
-# #use clustree to identify clustering parameters that appear most appropriate
-# clusTree(seu.obj = seu.obj, dout = "../output/clustree/", outName = experiment, 
-#             test_dims = c(50,45,40), algorithm = 3, prefix = "integrated_snn_res.")
+#use clustree to identify clustering parameters that appear most appropriate
+clusTree(seu.obj = seu.obj, dout = "../output/clustree/", outName = experiment, 
+            test_dims = c(50,45,40), algorithm = 3, prefix = "integrated_snn_res.")
 
 seu.obj <- readRDS("../output/s2/bm_cd34_subset_analysis_231211_v5_integrated_S2.rds")
 #complete data visualization
@@ -117,51 +118,116 @@ seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "i
                                         "CD4", "MS4A1", "PPBP","HBM")
 )
 
-# saveRDS(seu.obj, "../output/s3/bm_cd34_subset_analysis_231211_v5_integrated_res0.6_dims45_dist0.1_neigh10_S3.rds")
+saveRDS(seu.obj, "../output/s3/bm_cd34_subset_analysis_231211_v5_integrated_res0.6_dims45_dist0.1_neigh10_S3.rds")
+
+################################################# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#######   end additional preprocessing   ######## <<<<<<<<<<<<<<
+################################################# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+########################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#######   Begin lineage analysis   ######## <<<<<<<<<<<<<<
+########################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+#load in the object
 seu.obj <- readRDS("../output/s3/bm_cd34_subset_analysis_231211_v5_integrated_res0.6_dims45_dist0.1_neigh10_S3.rds")
+majorColz <- c("#DFA74D","#B7DBF0", "#C59979", "#ECD58E", "#D89183" )
 
+#rename idents
 Idents(seu.obj) <- "clusterID_integrated.harmony"
-
-clusId <- c("neut", "neut","neut","neut","neut","mono","mono","eryth","eryth","HPSC","mast","tcell","bcell","bcell","bcell","bcell","bcell")
+clusId <- c("neut","neut","neut","neut","neut","mono","mono","eryth","eryth","HPSC","mast","bcell","bcell","bcell","bcell","bcell","bcell")
 names(clusId) <- c(0,1,4,5,6,9,8,13,15,2,10,16,14,12,7,3,11)
-
 seu.obj <- RenameIdents(seu.obj, clusId) 
 seu.obj$braches <- Idents(seu.obj)
+levels(seu.obj$braches) # "neut"  "mono"  "eryth" "HPSC"  "mast"  "bcell"
 
-# ### Generate violin plots of defining features
+plot <- DimPlot(seu.obj, 
+              reduction = "umap.integrated.harmony", 
+              group.by = "braches",
+              pt.size = 0.25,
+              label = TRUE,
+              label.box = TRUE
+ )
+
+p <- formatUMAP(plot = plot) + NoLegend()
+ggsave(paste("../output/", outName, "/", outName, "_bracnch.png", sep = ""), width = 7, height = 7)
+
+
+### Generate violin plots of defining features
 vilnPlots(seu.obj = seu.obj, groupBy = "braches", numOfFeats = 24, outName = "bm_cd34_subset_braches",
             outDir = "../output/viln/allCells/", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"), assay = "RNA", 
             min.pct = 0.25, only.pos = T)
 
+#gsea on susspected mast cells to confirm ID -- does not clearly confirm, susspect they are HPSCs
+markers.df <- read.csv("../output/viln/allCells/bm_cd34_subset_braches_gene_list.csv")
+susMastCells <- markers.df[markers.df$cluster == "mast", ] %>% filter(p_val_adj < 0.01) %>% pull(gene)
+p <- plotGSEA(
+    geneList = susMastCells,
+    category = "C8", species = "dog", upCol = "red", dwnCol = "blue",
+    pvalueCutoff = 0.05, subcategory = NULL, termsTOplot = 16, upOnly = T, trimTerm = T
+)
+ggsave(paste("../output/", outName, "/", outName, "_mast_cell_gsea.png", sep = ""), width = 10, height = 7)
 
-pi <- autoDot(seu.integrated.obj = seu.obj, inFile = "../output/viln/allCells/bm_cd34_subset_braches_gene_list.csv", groupBy = "braches",
-                     MIN_LOGFOLD_CHANGE = 0.5, MIN_PCT_CELLS_EXPR_GENE = 0.1,
-                    filterTerm = "ENSCAFG"
-                    )
+#rename idents to correct mast cell call to be HPSCs
+Idents(braches) <- "clusterID_integrated.harmony"
+seu.obj <- RenameIdents(seu.obj, "mast" = "HPSC") 
+seu.obj$braches <- Idents(seu.obj)
+levels(seu.obj$braches) # "HPSC"  "neut"  "mono"  "eryth" "bcell"
 
-ggsave(paste0("../output/", outName, "/", outName, "_autodot_branches.png"), width = 7, height = 14)
+#convert to cluster ID numbers
+seu.obj <- convertTOclusID(seu.obj = seu.obj, metaSlot = "braches")
 
 
-
-# ### Generate violin plots of defining features
-vilnPlots(seu.obj = seu.obj, groupBy = "clusterID_integrated.harmony", numOfFeats = 24, outName = "bm_cd34_subset_clusterID_integrated.harmony",
+### Generate violin plots of defining features
+vilnPlots(seu.obj = seu.obj, groupBy = "braches_clusID", numOfFeats = 24, outName = "bm_cd34_subset_braches",
             outDir = "../output/viln/allCells/", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"), assay = "RNA", 
             min.pct = 0.25, only.pos = T)
+
+
+pi <- autoDot(seu.integrated.obj = seu.obj, inFile = "../output/viln/allCells/bm_cd34_subset_braches_gene_list.csv", groupBy = "braches_clusID",
+                     MIN_LOGFOLD_CHANGE = 0.5, MIN_PCT_CELLS_EXPR_GENE = 0.1,
+                    filterTerm = "ENSCAFG"
+                    ) + theme(legend.box="vertical") + scale_fill_manual(values = majorColz)
+ggsave(paste0("../output/", outName, "/", outName, "_autodot_branches.png"), width = 5, height = 10)
+
 
 lapply(c("umap.integrated.harmony", "umap.integrated.joint", "umap.integrated.rcpa"), function(x){
     pi <- DimPlot(seu.obj, 
                   reduction = x,
-                  group.by = "minorIdent",
+                  group.by = "braches_clusID",
                   pt.size = 0.1,
                   label = T,
-                  ncol = 2,
                   label.box = T,
                   repel = F,
-                  split.by = "cellSource"
     )
-    p <- formatUMAP(plot = pi) + NoLegend()
-    ggsave(paste0("../output/", outName, "/", outName, "_",x, ".png"), width = 14, height = 7)
+    p <- cusLabels(plot = pi, smallAxes = T) + NoLegend()
+    ggsave(plot = p, paste0("../output/", outName, "/", outName, "_",x, ".png"), width = 7, height = 7)
 })
+
+
+#modify the reduction parameters
+seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "subbed_integrated.harmony", 
+                        final.dims = 45, final.res = 1.4, stashID = "clusterID", algorithm = 3, min.dist = 0.2, n.neighbors = 20,
+                        prefix = "RNA_snn_res.", assay = "RNA", reduction = "integrated.harmony",
+                        saveRDS = F, return_obj = T, returnFeats = T,
+                        features = c("PTPRC", "CD3E", "CD8A", "GZMA", 
+                                        "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
+                                        "CD4", "MS4A1", "PPBP","HBM")
+)
+
+
+### plot the data
+pi <- DimPlot(seu.obj, 
+              reduction = "umap.integrated.harmony",
+              group.by = "braches_clusID",
+              pt.size = 0.1,
+              cols = majorColz,
+              label = T,
+              label.box = T,
+              repel = F,
+)
+p <- cusLabels(plot = pi, smallAxes = T) + NoLegend()
+ggsave(plot = p, paste0("../output/", outName, "/", outName, "_braches_clusID.png"), width = 7, height = 7)
+
 
 
 ### Fig supp: run SlingShot
@@ -233,16 +299,6 @@ ggsave(paste("../output/", outName, "/", outName, "_pseudoTime_all.png", sep = "
 
 
 
-### play around with the parameters
-#complete data visualization
-seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "subbed_integrated.harmony", 
-                        final.dims = 45, final.res = 1.4, stashID = "clusterID", algorithm = 3, min.dist = 0.2, n.neighbors = 20,
-                        prefix = "RNA_snn_res.", assay = "RNA", reduction = "integrated.harmony",
-                        saveRDS = T, return_obj = T, returnFeats = T,
-                        features = c("PTPRC", "CD3E", "CD8A", "GZMA", 
-                                        "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
-                                        "CD4", "MS4A1", "PPBP","HBM")
-)
 
 
 
