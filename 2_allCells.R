@@ -13,6 +13,7 @@ outName <- "allCells"
 outName_full <- "240201_bm_cd34_clusterID_integrated.harmony"
 clusID_main <- "clusterID_integrated.harmony"
 
+
 ### Umap by minorIdent before removal of disconnected cell types
 pi <- DimPlot(seu.obj, 
               reduction = "umap.integrated.harmony",
@@ -43,11 +44,11 @@ p <- formatUMAP(plot = pi) + NoLegend()
 ggsave(paste0("../output/", outName, "/", outName, "_umap_harmony_all_clusID.png"), width = 14, height = 7)
 
 
-
 ### Supp data - generate violin plots of defining features
-vilnPlots(seu.obj = seu.obj, groupBy = clusID_main, numOfFeats = 24, outName = outName_full,
-            outDir = "../output/viln/allCells/", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"),
+vilnPlots(seu.obj = seu.obj, groupBy = clusID_main, numOfFeats = 24, outName = outName,
+            outDir = paste0("../output/viln/", outName, "/"), outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"),
             min.pct = 0.25, only.pos = T)
+
 
 ### Export data for interactive cell browser
 ExportToCB_cus(seu.obj = seu.obj, dataset.name = outName, outDir = "../output/cb_input/", 
@@ -59,7 +60,6 @@ ExportToCB_cus(seu.obj = seu.obj, dataset.name = outName, outDir = "../output/cb
                 feats = c("PTPRC", "CD3E", "CD8A", "GZMA", 
                           "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
                           "CD4", "MS4A1", "PPBP", "HBM")
-
 )    
 
 #remove disconnected populations that do not connect to lineages (T cells = 14 & 19, Macrophage = 18, endothelial = 20, and Plasma cells = 17)
@@ -96,7 +96,58 @@ saveRDS(seu.obj, "../output/s3/240201_bm_cd34_removed_disconnected.rds")
 ########################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 # #load in the object
-# seu.obj <- readRDS("../output/s3/bm_cd34_subset_analysis_231211_v5_integrated_res0.6_dims45_dist0.1_neigh10_S3.rds")
+seu.obj <- readRDS("../output/s3/240201_bm_cd34_removed_disconnected.rds")
+outName <- "allCells_clean"
+outName_full <- "240201_bm_cd34_clusterID_integrated.harmony"
+clusID_main <- "clusterID_integrated.harmony"
+
+#load metadata
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID.csv", groupBy = "clusterID_integrated.harmony", metaAdd = "majorID")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/refColz.csv", groupBy = "orig.ident", metaAdd = "cellSource")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/refColz.csv", groupBy = "orig.ident", metaAdd = "name")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/refColz.csv", groupBy = "name", metaAdd = "colz")
+seu.obj$clusterID_integrated.harmony <- factor(seu.obj$clusterID_integrated.harmony, levels = 0:max(as.numeric(names(table(seu.obj$clusterID_integrated.harmony)))))
+seu.obj <- convertTOclusID(seu.obj = seu.obj, metaSlot = "majorID", newMetaName = "major_clusID")
+
+
+### UMAP of the reduced data
+pi <- DimPlot(seu.obj, 
+              reduction = "umap.integrated.harmony", 
+              group.by = clusID_main,
+              pt.size = 0.1,
+              label = T,
+              label.box = T,
+              repel = F,
+)
+p <- cusLabels(plot = pi) + NoLegend()
+ggsave(paste0("../output/", outName, "/", outName, "_clusID_main_UMAP.png"), width = 7, height = 7)
+
+
+### Supp data - generate violin plots of defining features
+vilnPlots(seu.obj = seu.obj, groupBy = clusID_main, numOfFeats = 24, outName = outName,
+            outDir = paste0("../output/viln/", outName, "/"), outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"),
+            min.pct = 0.25, only.pos = T)
+
+
+### Export data for interactive cell browser
+ExportToCB_cus(seu.obj = seu.obj, dataset.name = outName, outDir = "../output/cb_input/", 
+                markers = paste0("../output/viln/", outName, "/", outName, "_", clusID_main, "_gene_list.csv"),
+                reduction = "umap.integrated.harmony",  
+                colsTOkeep = c("orig.ident", "nCount_RNA", "nFeature_RNA", "percent.mt", "Phase", 
+                                "majorID", clusID_main, "name", "cellSource"), 
+                skipEXPR = F, test = F,
+                feats = c("PTPRC", "CD3E", "CD8A", "GZMA", 
+                          "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
+                          "CD4", "MS4A1", "PPBP", "HBM")
+)    
+
+
+
+
+
+
+
+
 # majorColz <- c("#DFA74D","#B7DBF0", "#C59979", "#ECD58E", "#D89183" )
 
 # #rename idents
