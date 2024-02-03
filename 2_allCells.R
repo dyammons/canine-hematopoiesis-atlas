@@ -52,10 +52,10 @@ vilnPlots(seu.obj = seu.obj, groupBy = clusID_main, numOfFeats = 24, outName = o
 
 ### Export data for interactive cell browser
 ExportToCB_cus(seu.obj = seu.obj, dataset.name = outName, outDir = "../output/cb_input/", 
-                markers = "../output/viln/allCells/240201_bm_cd34_clusterID_integrated.harmony_clusterID_integrated.harmony_gene_list.csv",
+                markers = paste0("../output/viln/", outName, "/", outName, "_", clusID_main, "_gene_list.csv"),
                 reduction = "umap.integrated.harmony",  
                 colsTOkeep = c("orig.ident", "nCount_RNA", "nFeature_RNA", "percent.mt", "Phase", 
-                                "majorID", clusID_main, "name", "cellSource"), 
+                                "majorID", clusID_main, "name", "cellSource", "minorIdent"), 
                 skipEXPR = F, test = F,
                 feats = c("PTPRC", "CD3E", "CD8A", "GZMA", 
                           "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
@@ -134,7 +134,7 @@ ExportToCB_cus(seu.obj = seu.obj, dataset.name = outName, outDir = "../output/cb
                 markers = paste0("../output/viln/", outName, "/", outName, "_", clusID_main, "_gene_list.csv"),
                 reduction = "umap.integrated.harmony",  
                 colsTOkeep = c("orig.ident", "nCount_RNA", "nFeature_RNA", "percent.mt", "Phase", 
-                                "majorID", clusID_main, "name", "cellSource"), 
+                                "majorID", clusID_main, "name", "cellSource", "minorIdent"), 
                 skipEXPR = F, test = F,
                 feats = c("PTPRC", "CD3E", "CD8A", "GZMA", 
                           "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
