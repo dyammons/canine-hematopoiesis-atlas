@@ -220,7 +220,7 @@ ggsave(paste0("../output/", outName, "/", outName, "_cds_pseudo_UMAP.png"), widt
 
 #exctract pseudotime for use in Seurat
 ptime <- pseudotime(cds, reduction_method = "UMAP")
-seu.obj$pseudotime <- ptime
+seu.obj$ptime <- ptime
 
 
 ###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -230,15 +230,15 @@ seu.obj$pseudotime <- ptime
 #create cell data set from raw data in Seurat object
 #complete data visualization
 seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = paste0(outName, "_highRes_integrated.harmony"), 
-                       final.dims = 45, final.res = 1.6, stashID = "clusterID", algorithm = 3, min.dist = 0.1, n.neighbors = 10,
+                       final.dims = 45, final.res = 1.6, stashID = "clusterID2", algorithm = 3, min.dist = 0.1, n.neighbors = 10,
                        prefix = "RNA_snn_res.", assay = "RNA", reduction = "integrated.harmony",
-                       saveRDS = F, return_obj = T, returnFeats = T,
+                       saveRDS = T, return_obj = T, returnFeats = T,
                        features = c("PTPRC", "CD3E", "CD8A", "GZMA", 
                                     "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
                                     "CD4", "MS4A1", "PPBP","HBM")
                       )
 
-
+seu.obj <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.6_dims45_dist0.1_neigh10_S3.rds")
 #dge analysis between DC branch and precusor
 btwnClusDEG(seu.obj = seu.obj, groupBy = "clusterID_integrated.harmony", idents.1 = "17", idents.2 = "3", bioRep = "orig.ident", padj_cutoff = 0.05, lfcCut = 0.58, topn=c(20,20),
             minCells = 5, outDir = paste0("../output/", outName, "/"), title = "17v3", idents.1_NAME = "17", idents.2_NAME = "3", strict_lfc = T,
@@ -378,18 +378,26 @@ Idents(seu.obj.sub) <- factor(droplevels(seu.obj.sub$clusterID_integrated.harmon
 p <- DoHeatmap(seu.obj.sub, cells = c(left.cells,center.cells,right.cells), features = feats_forHeat)
 ggsave(paste0("../output/", outName, "/", outName, "_seurat_heat.png"), width = 7, height = 7)
 
+#pick out TFs to highlight
+files <- list.files(path = paste0("../output/", outName, "/"), pattern=".csv", all.files=FALSE,
+                        full.names=T)
+df.list <- lapply(files, read.csv, header = T)
+df <- do.call(rbind, df.list)
 
+tfs <- read.csv("./metaData/allTFs_hg38.txt", col.names = "tfs")
+
+df <- df[df$gene %in% tfs$tfs, ]
 
 #gene expression by pseudotime
-feature <- c("CD300H","BPI","IRF4") #only works with 1 feat rn
-colorBy <- "clusterID_integrated.harmony" #seu metadata slot to color data by
-plotBy <- "pseudotime" #pseudotime data to use on the x axis -- match with the name of a metadata slot
-clus <- c("17", "30")
-rmZeros <- T #option to remove zero values - probablaly can keep it at false
+features <- c("PIR","IRF4","TFEC", "NFE2") #only works with 1 feat rn
+colorBy <- "clusterID2_integrated.harmony" #seu metadata slot to color data by
+plotBy <- "ptime" #pseudotime data to use on the x axis -- match with the name of a metadata slot
+clus <- c("17","30")
+rmZeros <- F #option to remove zero values - probablaly can keep it at false
 bin.size <- 5
 
-seu.obj.sub <- subset(seu.obj, clusterID_integrated.harmony %in% clus)
-mulit.plot <- lapply(feature, function(x){
+seu.obj.sub <- subset(seu.obj, clusterID2_integrated.harmony %in% clus)
+mulit.plot <- lapply(features, function(x){
     df <- FetchData(object = seu.obj.sub, vars = c('cellSource', 'name', colorBy, plotBy, x), layer = "data")
     colnames(df)[3] <- "cluster"
     colnames(df)[5] <- "feature"
@@ -399,19 +407,19 @@ mulit.plot <- lapply(feature, function(x){
     }
 
     df <- df %>% na.omit() %>% group_by(cluster) %>% mutate(feat = x,
-                                                            pseudotime = (pseudotime - sort(pseudotime)[3]) / (rev(sort(pseudotime))[3] - sort(pseudotime)[3]) 
-                                                           ) %>% arrange(pseudotime) %>% mutate(avg = zoo::rollmean(feature, k = bin.size, fill = NA)) %>% ungroup()
+                                                            ptime = (ptime - sort(ptime)[3]) / (rev(sort(ptime))[3] - sort(ptime)[3]) 
+                                                           ) %>% arrange(ptime) %>% mutate(avg = zoo::rollmean(feature, k = bin.size, fill = NA)) %>% ungroup()
     return(df)
 })
 
-df <- do.call(rbind, mulit.plot)
+df <- do.call(rbind, mulit.plot) %>% na.omit() 
 
-p <- ggplot(data = df, aes(x = pseudotime, y = avg, color = feat, linetype = cluster))  + geom_smooth(se = FALSE) + labs(title = paste0(feature," - ",clus), x = "Pseudotime", y = "Log2 normalized count") + guides(colour = guide_legend(ncol = 3)) #+ scale_colour_manual(values = colArray$colour)
+p <- ggplot(data = df, aes(x = ptime, y = avg, color = feat, linetype = cluster)) + geom_smooth(se = FALSE)  + labs(title = "TFs by time", x = "Pseudotime", y = "Log2 normalized count") + guides(colour = guide_legend(ncol = 3)) #+ scale_colour_manual(values = colArray$colour)
 ggsave(paste0("../output/", outName, "/", outName, "_feats_byTime.png"), width = 7, height = 7)
 
 #  geom_point(data = df, aes(x = pseudotime, y = TCF4, colour = clusterID_integrated.harmony), alpha = 0.5) +
 
-
+ + geom_point()
 
 
 
