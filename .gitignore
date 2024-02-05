@@ -6,3 +6,5 @@ logFiles
 r4.3.2-seuratv5_v2
 *.sbatch
 *.img
+*.feather
+*.tbl
