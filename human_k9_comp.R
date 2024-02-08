@@ -2,7 +2,7 @@
 
 #load custom functions & packages
 message(paste0(Sys.time(), " INFO: loading packages and custom functions."))
-source("./customFunctions_Seuratv5.R")
+source("/pl/active/CSUClinHeme/users/dylan/repos/scrna-seq/analysis-code/customFunctions_Seuratv5.R")
 library(ape)
 library(ggtree)
 
@@ -52,18 +52,22 @@ dog.meta <- "minorIdent"
 ### Integrate cross-species
 
 #read in processed k9 data
-seu.obj.k9 <- readRDS("../output/s3/bm_cd34_analysis_231211_v5_integrated_res0.6_dims45_dist0.1_neigh10_S3.rds")
+seu.obj.k9 <- readRDS("../output/s3/allCellslabTransfer_S3.rds")
 
 #split then merge objects
 message(paste0(Sys.time(), " INFO: splitting data from k9 and human."))
 seu.list <- c(SplitObject(seu.obj.k9, split.by = "orig.ident"), SplitObject(seu.obj, split.by = "orig.ident"))
+samNames <- names(seu.list)
 seu.list <- lapply(1:length(seu.list), function(i){
-    CreateSeuratObject(seu.list[[i]]@assays$RNA@layers$counts, project = names(seu.list)[i], assay = "RNA", meta.data = seu.list[[i]]@meta.data)
+    cnts <- seu.list[[i]]@assays$RNA@layers$counts
+    rownames(cnts) <- rownames(seu.list[[i]])
+    colnames(cnts) <- colnames(seu.list[[i]])
+    CreateSeuratObject(cnts, project = samNames[i], assay = "RNA", meta.data = seu.list[[i]]@meta.data)
 })
 
 message(paste0(Sys.time(), " INFO: merging data from k9 and human."))
 seu.merge <- merge(seu.list[1][[1]], y = seu.list[2:length(seu.list)],
-                  add.cell.ids = names(seu.list), 
+                  add.cell.ids = samNames, 
                   project = "hu_k9_comp"
                  )
 rm(seu.list)
@@ -72,7 +76,7 @@ gc()
 #integrate the data
 message(paste0(Sys.time(), " INFO: integrating data from k9 and human."))
 seu.obj <- integrateData(din = NULL, pattern = NULL,
-                          saveRDS = F, 
+                          saveRDS = T, 
                           outName = outName,  dout = "../output/s2/",
                           orig.reduction = "pca",
                           normalization.method = "LogNormalize", 
@@ -80,9 +84,7 @@ seu.obj <- integrateData(din = NULL, pattern = NULL,
                           indReClus = TRUE, seu.obj = seu.merge,
                           runAllMethods = FALSE
                         )
-
 gc()
-
 
 #complete data visualization & save the RDS file
 message(paste0(Sys.time(), " INFO: data integration complete. compeleting dimension reduction and saving integrated object as a .rds file in ../s3/."))
@@ -94,7 +96,6 @@ seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "i
                                         "IL7R", "ANPEP", "FLT3", "HLA-DRA", 
                                         "CD4", "MS4A1", "PPBP","HBM")
 )
-
 gc()
 
 #update user
@@ -102,7 +103,7 @@ message(paste0(Sys.time(), " INFO: file saved. moving to plot hierchical cluster
 
 #tag cell type labels with species labels to provide contrast
 seu.obj$cellSource <- ifelse(grepl("Manton", seu.obj$orig.ident), "Human", "Canine")    
-seu.obj$type <- ifelse(grepl("Canine", seu.obj$cellSource), paste0("c_", seu.obj[[dog.meta]]), paste0("hu_", seu.objseu.obj[[hu.meta]]))    
+seu.obj$type <- ifelse(grepl("Canine", seu.obj$cellSource), paste0("c_", seu.obj[[dog.meta]]), paste0("hu_", seu.obj[[hu.meta]]))    
 
 #extract data to plot
 metadata <- seu.obj@meta.data
