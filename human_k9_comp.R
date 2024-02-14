@@ -53,6 +53,18 @@ dog.meta <- "minorIdent"
 
 #read in processed k9 data
 seu.obj.k9 <- readRDS("../output/s3/allCellslabTransfer_S3.rds")
+cnts <- seu.obj.k9@assays$RNA$counts
+cnts <- orthogene::convert_orthologs(gene_df = cnts,
+                                        gene_input = "rownames", 
+                                        gene_output = "rownames", 
+                                        input_species = "dog",
+                                        output_species = "human",
+                                        non121_strategy = "drop_both_species") 
+rownames(cnts) <- unname(rownames(cnts))
+seu.obj.k9 <- CreateSeuratObject(cnts, project = "humanConvert", assay = "RNA",
+                                  min.cells = 0, min.features = 0, names.field = 1,
+                                  names.delim = "_", meta.data = seu.obj.k9@meta.data)
+
 
 #split then merge objects
 message(paste0(Sys.time(), " INFO: splitting data from k9 and human."))
@@ -101,13 +113,16 @@ gc()
 #update user
 message(paste0(Sys.time(), " INFO: file saved. moving to plot hierchical clustering."))
 
+#reload in the integrated object
+seu.obj <- readRDS("../output/s3/integrated.harmony_res0.8_dims45_dist0.2_neigh20_S3.rds")
+
 #tag cell type labels with species labels to provide contrast
 seu.obj$cellSource <- ifelse(grepl("Manton", seu.obj$orig.ident), "Human", "Canine")    
-seu.obj$type <- ifelse(grepl("Canine", seu.obj$cellSource), paste0("c_", seu.obj[[dog.meta]]), paste0("hu_", seu.obj[[hu.meta]]))    
+seu.obj$type <- ifelse(grepl("Canine", seu.obj$cellSource), paste0("c_", seu.obj$minorIdent), paste0("hu_", seu.obj$mantonID))    
 
 #extract data to plot
 metadata <- seu.obj@meta.data
-expression <- as.data.frame(t(seu.obj@assays$integrated@data))
+expression <- as.data.frame(t(as.matrix(seu.obj@assays$RNA@layers$data)))
 expression$anno_merge <- seu.obj@meta.data[rownames(expression),]$type
 
 #get average expression by cluster
@@ -159,29 +174,26 @@ vilnPlots(seu.obj = seu.obj.dog, inFile = NULL, groupBy = dog.meta, numOfFeats =
 
 
 #read in the cell type gene lists
-dog.df <- read.csv("../output/viln/dog_gene_list.csv")
-human.df <- read.csv("../output/viln/human_gene_list.csv")
+dog.df <- read.csv("../output/viln/allCells/allCells_clusterID_integrated.harmony_gene_list.csv")
+human.df <- read.csv("../output/viln/manton/manton_bm_gene_list.csv")
 
-#only include features that were defining in each speices - this might be cheating
-dog.df <- dog.df[dog.df$gene %in% interSECT, ]
-human.df <- human.df[human.df$gene %in% interSECT, ]
+#check the data quality
+dog.df %>% group_by(cluster) %>% summarize(nn = n()) %>% summarize(min = min(nn))
+human.df %>% group_by(cluster) %>% summarize(nn = n()) %>% summarize(min = min(nn))
 
-#alternative approach - use stringent filtering to increase the liklihood of only using truely defining features
-# dog.df <- dog.df[dog.df$pct.2 < 0.5 & dog.df$pct.1 > 0.6, ] #alternate filtering para
-# human.df <- human.df[human.df$pct.2 < 0.5 & human.df$pct.1 > 0.6, ] #alternate filtering para
-
-#calculate the number of overlaping DEGs
+#calc the jaccard similarity index
 res <- lapply(unique(dog.df$cluster), function(x){
-    
     dog.list <- dog.df[dog.df$cluster == x, ] %>% .$gene
     
     res_pre <- lapply(unique(human.df$cluster), function(y){
         human.list <- human.df[human.df$cluster == y, ] %>% .$gene
-#         degList <- length(unique(c(dog.list,human.list)))
-        intERsct <- length(dog.list[dog.list %in% human.list])
-        names(intERsct) <- x
         
-        return(intERsct)
+        interSect <- length(intersect(human.list, dog.list)) 
+        uni <- length(human.list) + length(dog.list) - interSect 
+        JaccardIndex <- interSect/uni
+        names(JaccardIndex) <- x
+        
+        return(JaccardIndex)
     })
     
     res_pre <- do.call(rbind, res_pre)
@@ -192,79 +204,40 @@ res <- lapply(unique(dog.df$cluster), function(x){
     
 res1 <- do.call(cbind, res)
 
-
-#calculate the percent overlaping DEGs
-res <- lapply(unique(dog.df$cluster), function(x){
-    
-    dog.list <- dog.df[dog.df$cluster == x, ] %>% .$gene
-    
-    res_pre <- lapply(unique(human.df$cluster), function(y){
-        human.list <- human.df[human.df$cluster == y, ] %>% .$gene
-        intERsct <- length(dog.list[dog.list %in% human.list])/length(unique(c(dog.list,human.list)))
-        names(intERsct) <- x
-        
-        return(intERsct)
-    })
-    
-    res_pre <- do.call(rbind, res_pre)
-    rownames(res_pre) <- unique(human.df$cluster)
-    return(res_pre)
-    
-})
-    
-res2 <- do.call(cbind, res)
-
-#use this code block to reorder when the time comes
+# #order the celltypes
 # rowTarg <- c("Endothelial","Fibroblast" ,"Osteoblast","Cycling osteoblast",
 #        "CD14_monocyte","NR4A3_Macrophage","TXNIP_Macrophage","FABP5_Macrophage",
 #        "IFN-TAM","Pre-OC","Mature-OC","pDC","cDC2","Mast",
 #        "CD8 T cell","CD4 T cell","IFN-sig T cell","NK cell",
 #        "Plasma cell","B cell")
-
-
 # colTarg <- c("Endothelial cell","Fibroblast","Osteoblast_1","Osteoblast_2","Osteoblast_3","Hypoxic_osteoblast",
-#          "IFN-osteoblast","Osteoblast_cycling","M-MDSC","TIM","ANGIO_TAM","TAM_INT","TAM_ACT","LA-TAM_SPP2_hi",
+#          "IFN-osteoblast","Osteoblast_cycling","CD4+_TIM","CD4-_TIM","ANGIO_TAM","TAM_INT","TAM_ACT","LA-TAM_SPP2_hi",
 #          "LA-TAM_C1QC_hi","IFN-TAM","Cycling_OC","CD320_OC","Mature_OC","pDC","cDC1","cDC2","mregDC",
 #          "Mast cell","Neutrophil","CD8 T cell","CD4 T cell","T_IFN","T_cycling","NK","Plasma cell","B cell")
-
 # res1 <- res1[match(rowTarg, rownames(res1)),]        
-# res1 <- res1[ ,match(colTarg, colnames(res1))]
-
-# res2 <- res2[match(rowTarg, rownames(res2)),]        
-# res2 <- res2[ ,match(colTarg, colnames(res2))] 
+# res1 <- res1[ ,match(colTarg, colnames(res1))]   
        
-
-#basic plot using pheatmap
-png(file = paste0("../output/", outName, "/", outName, "_celltype_comp_pheatmap.png"), width=4000, height=4000, res=400)
-par(mfcol=c(1,1))                    
-pheatmap(t(res2), display_numbers = T, cluster_rows = FALSE, cluster_cols = FALSE)
-dev.off()
-
-
-#pretty plot using ComplexHeatmap
-small_mat <-  as.matrix(t(res1))
-png(file = paste0("../output/", outName, "/", outName, "_celltype_comp_heatmap.png"), width=4000, height=4000, res=400)
+#plot the data
+png(file = paste0("../output/", outName, "/", outName, "_jaccard.png"), width=4000, height=4000, res=400)
 par(mfcol=c(1,1))         
-
-ht <- Heatmap(t(res2), #name = "mat", #col = col_fun,
-              name = "% overlapping DEGs",
+ht <- Heatmap(t(res1), #name = "mat", #col = col_fun,
+              name = "Jaccard similarity index",
               cluster_rows = F,
-              row_title = "Dog cell types",
-              col=viridis(100),
+              row_title = "Canine cell types",
+              row_title_gp = gpar(fontsize = 24),
+              col=viridis(option = "magma",100),
               cluster_columns = F,
               column_title = "Human cell types",
+              column_title_gp = gpar(fontsize = 24),
               column_title_side = "bottom",
               column_names_rot = 45,
               heatmap_legend_param = list(legend_direction = "horizontal", title_position = "topleft",  title_gp = gpar(fontsize = 16), 
                                           labels_gp = gpar(fontsize = 8), legend_width = unit(6, "cm")),
-              
-              cell_fun = function(j, i, x, y, width, height, fill) {
-                  grid.text(sprintf("%.0f", small_mat[i, j]), x, y, gp = gpar(fontsize = 10))
-              })
-
+             )
 draw(ht, padding = unit(c(2, 12, 2, 5), "mm"),heatmap_legend_side = "top")
-
 dev.off()
+
+
 
 
 #update user of completion
