@@ -65,7 +65,6 @@ seu.obj.k9 <- CreateSeuratObject(cnts, project = "humanConvert", assay = "RNA",
                                   min.cells = 0, min.features = 0, names.field = 1,
                                   names.delim = "_", meta.data = seu.obj.k9@meta.data)
 
-
 #split then merge objects
 message(paste0(Sys.time(), " INFO: splitting data from k9 and human."))
 seu.list <- c(SplitObject(seu.obj.k9, split.by = "orig.ident"), SplitObject(seu.obj, split.by = "orig.ident"))
@@ -77,30 +76,26 @@ seu.list <- lapply(1:length(seu.list), function(i){
     CreateSeuratObject(cnts, project = samNames[i], assay = "RNA", meta.data = seu.list[[i]]@meta.data)
 })
 
-message(paste0(Sys.time(), " INFO: merging data from k9 and human."))
-seu.merge <- merge(seu.list[1][[1]], y = seu.list[2:length(seu.list)],
-                  add.cell.ids = samNames, 
-                  project = "hu_k9_comp"
-                 )
+rm(seu.obj.k9)
+rm(seu.obj)
+gc()
+
+#ensure all objects have percent.mt stored in metadata as this will be regressed during integration
+seu.list <- lapply(seu.list, PercentageFeatureSet, pattern = "^MT-", col.name = "percent.mt")
+
+message(paste0(Sys.time(), " INFO: integrating data from k9 and human."))
+seu.obj <- integrateData_v4(seu.list = seu.list, outDir = "../output/s2/", subName = "human_k9",
+                            vars.to.regress = "percent.mt", saveRDS = T
+                           )
 rm(seu.list)
 gc()
 
-#integrate the data
-message(paste0(Sys.time(), " INFO: integrating data from k9 and human."))
-seu.obj <- integrateData(din = NULL, pattern = NULL,
-                          saveRDS = T, 
-                          outName = outName,  dout = "../output/s2/",
-                          orig.reduction = "pca",
-                          normalization.method = "LogNormalize", 
-                          method = "HarmonyIntegration",
-                          indReClus = TRUE, seu.obj = seu.merge,
-                          runAllMethods = FALSE
-                        )
-gc()
+
+stop("This is the end for integration. Rest needs to be tested!")
 
 #complete data visualization & save the RDS file
 message(paste0(Sys.time(), " INFO: data integration complete. compeleting dimension reduction and saving integrated object as a .rds file in ../s3/."))
-seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "integrated.harmony", 
+seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "integrated_v4", 
                         final.dims = 45, final.res = 0.8, stashID = "clusterID", algorithm = 3, min.dist = 0.2, n.neighbors = 20,
                         prefix = "RNA_snn_res.", assay = "RNA", reduction = "integrated",
                         saveRDS = T, return_obj = T, returnFeats = T,
