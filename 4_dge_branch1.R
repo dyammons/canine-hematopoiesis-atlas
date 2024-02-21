@@ -15,6 +15,9 @@ library(monocle3)
 #######   Begin preliminary analysis   ######## <<<<<<<<<<<<<<
 ############################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
+#set some output directives
+reduction <- "umap.integrated.harmony"
+
 #load in high resolution clstering and pseudotime
 seu.obj <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.6_dims45_dist0.15_neigh20_S3.rds")
 cds <- readRDS("../output/s3/240220_CDS_bm_cd34_removed_disconnected.rds")
@@ -23,7 +26,7 @@ seu.obj$ptime <- ptime
 
 #plot the high-res clustering results
 pi <- DimPlot(seu.obj, 
-              reduction = "umap.integrated.harmony", 
+              reduction = reduction, 
               group.by = "clusterID2_integrated.harmony",
               pt.size = 0.1,
               label = T,
@@ -117,45 +120,46 @@ dev.off()
 
 
 #plot pseudotime in small region where deg analysis was completed
-seu.obj$pseudotimee <- ifelse(seu.obj$clusterID_integrated.harmony %in% c("3", "17", "30"), seu.obj$pseudotime, NA)
+seu.obj$pseudotimee <- ifelse(seu.obj@meta.data[ ,groupBy] %in% c(base_clus, divergent_clus), seu.obj$ptime, NA)
 p <- FeaturePlot(seu.obj, features = "pseudotimee", reduction = reduction) 
 p <- formatUMAP(p) + scale_color_continuous(na.value = "grey80")
-ggsave(paste0("../output/", outName, "/", outName, "_pseudo_highlight_UMAP.png"), width = 7, height = 7)
+ggsave(paste0("../output/", outName, "/", branch, "/", branch, "_pseudo_highlight_UMAP.png"), width = 7, height = 7)
 
 #highlight region by cluster
-colArray <- as.data.frame(matrix(levels(seu.obj$clusterID_integrated.harmony), dimnames = list(NULL, "clusID")))
+colArray <- as.data.frame(matrix(levels(seu.obj@meta.data[ ,groupBy]), dimnames = list(NULL, "clusID")))
 colArray$color <- gg_color_hue(nrow(colArray))
-colArray <- colArray %>% mutate(high_col = ifelse(clusID %in% c("3", "17", "30"), color,"grey"))
+colArray <- colArray %>% mutate(high_col = ifelse(clusID %in% c(base_clus, divergent_clus), color,"grey"))
 
 pi <- DimPlot(seu.obj, 
         reduction = reduction, 
-        group.by = "clusterID_integrated.harmony",
+        group.by = groupBy,
         cols = colArray$high_col,
         pt.size = 0.5,
         label = F,
         label.box = F
  )
 umapHighLight <- formatUMAP(pi) + NoLegend()
-ggsave(paste0("../output/", outName, "/", outName, "_pseudo_highlight_UMAP.png"), width = 7, height = 7)
+ggsave(paste0("../output/", outName, "/", branch, "_highlight_UMAP.png"), width = 7, height = 7)
 
 
 #order cells by time then plot the genes in heatmap
-seu.obj.sub <- subset(seu.obj.sub, downsample = min(table(droplevels(seu.obj.sub$clusterID_integrated.harmony))))
+seu.obj.sub <- subset(seu.obj.sub, downsample = min(table(droplevels(seu.obj@meta.data[ ,groupBy]))))
 seu.obj.sub <- ScaleData(seu.obj.sub)
 mat_scaled <- as.matrix(seu.obj.sub@assays$RNA$scale.data) #use scale data
 
-order.df <- seu.obj.sub@meta.data[ ,c("clusterID_integrated.harmony", "pseudotime")] 
-left.cells <- order.df %>% filter(clusterID_integrated.harmony == "17") %>% arrange(desc(pseudotime)) %>% rownames()
-center.cells <- order.df %>% filter(clusterID_integrated.harmony == "3")  %>% rownames()
-right.cells <- order.df %>% filter(clusterID_integrated.harmony == "30") %>% arrange(desc(pseudotime)) %>% rownames()
+order.df <- seu.obj.sub@meta.data[ ,c(groupBy, "ptime")] 
+colnames(order.df)[1] <- "clus"                                                                              
+left.cells <- order.df %>% filter(clus == divergent_clus[2]) %>% arrange(desc(ptime)) %>% rownames()
+center.cells <- order.df %>% filter(clus == base_clus)  %>% rownames()
+right.cells <- order.df %>% filter(clus == divergent_clus[1]) %>% arrange(desc(ptime)) %>% rownames()
 
 #scale data
 mat_scaled <- mat_scaled[rownames(mat_scaled) %in% feats_forHeat,]
 mat_scaled <- mat_scaled[ ,match(c(left.cells,center.cells,right.cells), colnames(mat_scaled))]
 
 #prep annotations
-samp <- unique(seu.obj$colz)
-names(samp) <- unique(seu.obj$name)
+samp <- unique(seu.obj.sub$colz)
+names(samp) <- unique(seu.obj.sub$name)
 ha = HeatmapAnnotation(
     Sample = unlist(lapply(rownames(mat), function(x){strsplit(x,"--")[[1]][2]})),
     Cluster = unlist(lapply(rownames(mat), function(x){strsplit(x,"--")[[1]][1]})),
@@ -163,8 +167,8 @@ ha = HeatmapAnnotation(
     col = list(Sample = samp)
 )
 
-#plot the data
-png(file = paste0("../output/", outName, "/", outName, "_dc_mono_branch_Heat_degs.png"), width=3000, height=4000, res=400)
+#plot the data -- this does not work as desired
+png(file = paste0("../output/", outName, "/", branch, "_Heat_degs.png"), width=3000, height=4000, res=400)
 par(mfcol=c(1,1))         
 ht <- Heatmap(mat_scaled, #name = "mat", #col = col_fun,
               name = "Scaled expression",
@@ -178,45 +182,46 @@ ht <- Heatmap(mat_scaled, #name = "mat", #col = col_fun,
 draw(ht, padding = unit(c(2, 12, 2, 5), "mm"))
 dev.off()
 
-Idents(seu.obj.sub) <- factor(droplevels(seu.obj.sub$clusterID_integrated.harmony), levels = c("17","3","30"))
+#plot the data using Seurat DoHeatmap
+Idents(seu.obj.sub) <- factor(droplevels(seu.obj.sub@meta.data[ ,groupBy]), levels =  c(divergent_clus[2], base_clus, divergent_clus[1]))
 p <- DoHeatmap(seu.obj.sub, cells = c(left.cells,center.cells,right.cells), features = feats_forHeat)
-ggsave(paste0("../output/", outName, "/", outName, "_seurat_heat.png"), width = 7, height = 7)
+ggsave(paste0("../output/", outName, "/", branch, "_seurat_heat.png"), width = 7, height = 7)
 
-#pick out TFs to highlight
-files <- list.files(path = paste0("../output/", outName, "/"), pattern=".csv", all.files=FALSE,
-                        full.names=T)
-df.list <- lapply(files, read.csv, header = T)
-df <- do.call(rbind, df.list)
+# #pick out TFs to highlight
+# files <- list.files(path = paste0("../output/", outName, "/"), pattern=".csv", all.files=FALSE,
+#                         full.names=T)
+# df.list <- lapply(files, read.csv, header = T)
+# df <- do.call(rbind, df.list)
 
-tfs <- read.csv("./metaData/allTFs_hg38.txt", col.names = "tfs")
+# tfs <- read.csv("./metaData/allTFs_hg38.txt", col.names = "tfs")
 
-df <- df[df$gene %in% tfs$tfs, ]
+# df <- df[df$gene %in% tfs$tfs, ]
 
-#gene expression by pseudotime
-features <- c("PIR","IRF4","TFEC", "NFE2") #only works with 1 feat rn
-colorBy <- "clusterID2_integrated.harmony" #seu metadata slot to color data by
-plotBy <- "ptime" #pseudotime data to use on the x axis -- match with the name of a metadata slot
-clus <- c("17","30")
-rmZeros <- F #option to remove zero values - probablaly can keep it at false
-bin.size <- 5
+# #gene expression by pseudotime
+# features <- c("PIR","IRF4","TFEC", "NFE2") #only works with 1 feat rn
+# colorBy <- "clusterID2_integrated.harmony" #seu metadata slot to color data by
+# plotBy <- "ptime" #pseudotime data to use on the x axis -- match with the name of a metadata slot
+# clus <- c("17","30")
+# rmZeros <- F #option to remove zero values - probablaly can keep it at false
+# bin.size <- 5
 
-seu.obj.sub <- subset(seu.obj, clusterID2_integrated.harmony %in% clus)
-mulit.plot <- lapply(features, function(x){
-    df <- FetchData(object = seu.obj.sub, vars = c('cellSource', 'name', colorBy, plotBy, x), layer = "data")
-    colnames(df)[3] <- "cluster"
-    colnames(df)[5] <- "feature"
+# seu.obj.sub <- subset(seu.obj, clusterID2_integrated.harmony %in% clus)
+# mulit.plot <- lapply(features, function(x){
+#     df <- FetchData(object = seu.obj.sub, vars = c('cellSource', 'name', colorBy, plotBy, x), layer = "data")
+#     colnames(df)[3] <- "cluster"
+#     colnames(df)[5] <- "feature"
 
-    if(rmZeros){
-        df <- df[df[ ,"feature"] != 0, ]
-    }
+#     if(rmZeros){
+#         df <- df[df[ ,"feature"] != 0, ]
+#     }
 
-    df <- df %>% na.omit() %>% group_by(cluster) %>% mutate(feat = x,
-                                                            ptime = (ptime - sort(ptime)[3]) / (rev(sort(ptime))[3] - sort(ptime)[3]) 
-                                                           ) %>% arrange(ptime) %>% mutate(avg = zoo::rollmean(feature, k = bin.size, fill = NA)) %>% ungroup()
-    return(df)
-})
+#     df <- df %>% na.omit() %>% group_by(cluster) %>% mutate(feat = x,
+#                                                             ptime = (ptime - sort(ptime)[3]) / (rev(sort(ptime))[3] - sort(ptime)[3]) 
+#                                                            ) %>% arrange(ptime) %>% mutate(avg = zoo::rollmean(feature, k = bin.size, fill = NA)) %>% ungroup()
+#     return(df)
+# })
 
-df <- do.call(rbind, mulit.plot) %>% na.omit() 
+# df <- do.call(rbind, mulit.plot) %>% na.omit() 
 
-p <- ggplot(data = df, aes(x = ptime, y = avg, color = feat, linetype = cluster)) + geom_smooth(se = FALSE)  + labs(title = "TFs by time", x = "Pseudotime", y = "Log2 normalized count") + guides(colour = guide_legend(ncol = 3)) 
-ggsave(paste0("../output/", outName, "/", outName, "_feats_byTime.png"), width = 7, height = 7)
+# p <- ggplot(data = df, aes(x = ptime, y = avg, color = feat, linetype = cluster)) + geom_smooth(se = FALSE)  + labs(title = "TFs by time", x = "Pseudotime", y = "Log2 normalized count") + guides(colour = guide_legend(ncol = 3)) 
+# ggsave(paste0("../output/", outName, "/", outName, "_feats_byTime.png"), width = 7, height = 7)
