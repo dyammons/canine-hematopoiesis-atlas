@@ -291,6 +291,49 @@ formatUMAP(p) + theme(axis.title = element_blank(),
                             ) + NoLegend()
 ggsave(paste0("../output/", outName, "/", outName, "_cds_pseudo_UMAP.png"), width = 7, height = 7)
 
+#look for degs overtime
+deg_res <- graph_test(cds, neighbor_graph = "principal_graph", cores = 4)
+pr_deg_ids <- row.names(subset(deg_res, q_value < 0.01) %>% arrange(q_value))
+
+p <- plot_cells(cds, genes=pr_deg_ids[1:4],
+           show_trajectory_graph=FALSE,
+           label_cell_groups=FALSE,
+           label_leaves=FALSE)
+ggsave(paste0("../output/", outName, "/", outName, "_cds_degs_UMAP.png"), width = 7, height = 7)
+
+features <- pr_deg_ids[5:8]
+p <- prettyFeats(seu.obj = seu.obj, nrow = 2, ncol = 2, features = features, reduction = "umap.integrated.harmony",
+                    color = "black", order = F, pt.size = 0.0000001, title.size = 18)
+ggsave(paste0("../output/", outName, "/", outName, "_cds_degs.png"), width = 7, height = 7)
+
+
+cds <- preprocess_cds(cds, num_dim = 45) #find alternative to running pca again... although it seems to work ok
+gene_module_df <- find_gene_modules(cds[pr_deg_ids,], resolution=c(10^seq(-6,-1)))
+cell_group_df <- tibble(cell = row.names(colData(cds)), 
+                                cell_group = colData(cds)$majorID)
+agg_mat <- aggregate_gene_expression(cds, gene_module_df, cell_group_df)
+row.names(agg_mat) <- str_c("Module ", row.names(agg_mat))
+
+png(file = paste0("../output/", outName, "/", outName, "_modules_degs.png"), width = 1500, height = 3000, res = 400)
+par(mfcol=c(1,1))         
+pheatmap(agg_mat, scale="column", clustering_method="ward.D2")
+dev.off()
+
+features <- gene_module_df %>% filter(module == 3) %>% pull(id) %>% head(4)
+p <- prettyFeats(seu.obj = seu.obj, nrow = 2, ncol = 2, features = features, reduction = "umap.integrated.harmony",
+                    color = "black", order = F, pt.size = 0.0000001, title.size = 18)
+ggsave(paste0("../output/", outName, "/", outName, "_cds_degs.png"), width = 7, height = 7)
+
+
+
+AFD_genes <- c("gcy-8", "dac-1", "oig-8")
+AFD_lineage_cds <- cds[rowData(cds)$gene_short_name %in% AFD_genes,
+                       colData(cds)$cell.type %in% c("AFD")]
+AFD_lineage_cds <- order_cells(AFD_lineage_cds)
+
+plot_genes_in_pseudotime(AFD_lineage_cds,
+                         color_cells_by="embryo.time.bin",
+                         min_expr=0.5)
 
 #save the .cds object
 saveRDS(cds, file = "../output/s3/240220_CDS_bm_cd34_removed_disconnected.rds")
@@ -313,6 +356,7 @@ seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = pa
                                     "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
                                     "CD4", "MS4A1", "PPBP","HBM")
                       )
+
 
 
 # ###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
