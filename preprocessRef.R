@@ -2,12 +2,12 @@
 
 #load custom functions & packages
 message(paste0(Sys.time(), " INFO: loading packages and custom functions."))
-source("./customFunctions_Seuratv5.R")
+source("/pl/active/CSUClinHeme/users/dylan/repos/scrna-seq/analysis-code/customFunctions_Seuratv5.R")
 outName <- "human_k9_comp"
 
 #get file names
 message(paste0(Sys.time(), " INFO: initiating script."))
-files <- list.files(path = "../input_h5/" , pattern = "*.h5", all.files = FALSE,
+files <- list.files(path = "../external_data/manton/" , pattern = "*.h5", all.files = FALSE,
                     full.names = F)
 
 #load in the barcodes that have annotations to stash cell identities and prefilter
@@ -31,7 +31,7 @@ message(paste0(Sys.time(), " INFO: loading in matricies and creating Seurat obje
 seu.list <- lapply(files, function(inFile){
  
     #get key paths
-    inFile_pwd <- paste0("../input_h5/", inFile)
+    inFile_pwd <- paste0("../external_data/manton/", inFile)
     projName <- paste(strsplit(inFile, "_")[[1]][1:3], collapse = "_")
 
     #load the data
@@ -67,7 +67,7 @@ seu.obj <- integrateData(outName = "manton_ref", orig.reduction = "pca", saveRDS
 
 #complete data visualization & save the RDS file
 message(paste0(Sys.time(), " INFO: data integration complete. generating some figures and saving integrated object as a .rds file in ../s3/."))
-seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "integrated.harmony", 
+seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "manton_ref", 
                         final.dims = 45, final.res = 0.8, stashID = "clusterID", algorithm = 3, min.dist = 0.2, n.neighbors = 20,
                         prefix = "RNA_snn_res.", assay = "RNA", reduction = "integrated",
                         saveRDS = T, return_obj = T, returnFeats = T,

@@ -168,7 +168,7 @@ clusID_main <- "clusterID_integrated.harmony"
 reduction <- "umap.integrated.harmony"
 
 #load metadata
-seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID.csv", groupBy = "clusterID_integrated.harmony", metaAdd = "majorID")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected.csv", groupBy = "clusterID_integrated.harmony", metaAdd = "majorID")
 seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/refColz.csv", groupBy = "orig.ident", metaAdd = "cellSource")
 seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/refColz.csv", groupBy = "orig.ident", metaAdd = "name")
 seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/refColz.csv", groupBy = "name", metaAdd = "colz")
