@@ -320,9 +320,9 @@ pheatmap(agg_mat, scale="column", clustering_method="ward.D2")
 dev.off()
 
 features <- gene_module_df %>% filter(module == 3) %>% pull(id) %>% head(4)
-p <- prettyFeats(seu.obj = seu.obj, nrow = 2, ncol = 2, features = features, reduction = "umap.integrated.harmony",
-                    color = "black", order = F, pt.size = 0.0000001, title.size = 18)
-ggsave(paste0("../output/", outName, "/", outName, "_cds_degs.png"), width = 7, height = 7)
+p <- prettyFeats(seu.obj = seu.obj, nrow = 1, ncol = 4, features = features, reduction = "umap.integrated.harmony",
+                    color = "black", order = F, pt.size = 0.0000001, title.size = 10, noLegend = T)
+ggsave(paste0("../output/", outName, "/", outName, "_cds_degs.png"), width = 8, height = 2)
 
 
 
@@ -347,6 +347,15 @@ saveRDS(cds, file = "../output/s3/240220_CDS_bm_cd34_removed_disconnected.rds")
 ### The below code block creates a high-resolution clustered
 ### Seurat object.
 
+clusTree(seu.obj = seu.obj, 
+                     dout = "../output/clustree/", outName = paste0(outName, "_highRes_integrated.harmony"), 
+                     test_dims = 45, 
+                     resolution = c(0.01, 0.05, 0.1, seq(0.2, 2, 0.1)), 
+                     algorithm = 3, 
+                     prefix = "RNA_snn_res.",
+         reduction = "integrated.harmony"
+                    )
+
 #complete clustering at a higher resolution -- DO NOT RUN; can skip to load in the object
 seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = paste0(outName, "_highRes_integrated.harmony"), 
                        final.dims = 45, final.res = 1.6, stashID = "clusterID2", algorithm = 3, min.dist = 0.15, n.neighbors = 20,
@@ -357,6 +366,39 @@ seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = pa
                                     "CD4", "MS4A1", "PPBP","HBM")
                       )
 
+#load in the processed data for further work up
+seu.obj <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.6_dims45_dist0.15_neigh20_S3.rds")
+table(seu.obj$clusterID2_integrated.harmony, seu.obj$minorIdent)
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majorID")
+# seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majCol")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "majCol", metaAdd = "labCol")
+
+#create umap
+colz.df <- read.csv("./metaData/allCells_ID_disconected_highRes.csv")
+pi <- DimPlot(seu.obj, 
+              reduction = reduction, 
+              group.by = "clusterID2_integrated.harmony",
+              pt.size = 0.1,
+              cols = colz.df$majCol,
+              label = T,
+              label.box = T,
+              repel = F,
+) + NoLegend()
+p <- cusLabels(plot = pi, labCol = colz.df$labCol, smallAxes = T)
+ggsave(paste0("../output/", outName, "/", outName, "_Idents_UMAP.png"), width = 7, height = 7)
+
+### Supp data - generate violin plots of defining features
+vilnPlots(seu.obj = seu.obj, groupBy = "clusterID2_integrated.harmony", numOfFeats = 24, outName = outName,
+            outDir = paste0("../output/viln/", outName, "/"), outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"),
+            min.pct = 0.25, only.pos = T)
+
+#make auto dot plot
+pi <- autoDot(seu.integrated.obj = seu.obj, inFile = "../output/viln/allCells_clean/allCells_clean_clusterID2_integrated.harmony_gene_list.csv", groupBy = "clusterID2_integrated.harmony",
+              MIN_LOGFOLD_CHANGE = 0.5, MIN_PCT_CELLS_EXPR_GENE = 0.1, n_feat = 3, filterTerm = "ENSCAFG"
+                    ) + theme(legend.box="vertical",
+                              legend.position = "right") + scale_fill_manual(values = colz.df$majCol)
+ggsave(paste0("../output/", outName, "/", outName, "_autodot_branches.png"), width = 16, height = 16)
 
 
 # ###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
