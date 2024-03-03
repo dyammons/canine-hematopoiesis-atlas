@@ -8,7 +8,14 @@ library(ggtree)
 
 #load in processed data
 message(paste0(Sys.time(), " INFO: initating code."))
-seu.obj <- readRDS("../output/s3/integrated.harmony_res0.8_dims45_dist0.2_neigh20_S3.rds")
+seu.obj <- readRDS("../output/s3/manton_ref_res0.8_dims45_dist0.2_neigh20_S3.rds")
+exclude <- unlist(lapply(1:8, function(x){
+    namez <- lapply(c(1,3,5:8), function(y){
+        namez <- paste0("MantonBM", x, "_HiSeq_",y)
+    })
+    namez <- unlist(namez)
+}))
+seu.obj <- subset(seu.obj, invert = T, subset = orig.ident %in% exclude)
 outName <- "human_k9_comp"
 
 #set metadata levels to compare
@@ -92,7 +99,7 @@ gc()
 
 
 stop("This is the end for integration. Rest needs to be tested!")
-
+seu.obj <- readRDS("../output/s2/human_k9_S2.rds")
 #complete data visualization & save the RDS file
 message(paste0(Sys.time(), " INFO: data integration complete. compeleting dimension reduction and saving integrated object as a .rds file in ../s3/."))
 seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "integrated_v4", 
@@ -169,7 +176,17 @@ vilnPlots(seu.obj = seu.obj.dog, inFile = NULL, groupBy = dog.meta, numOfFeats =
 
 
 #read in the cell type gene lists
-dog.df <- read.csv("../output/viln/allCells/allCells_clusterID_integrated.harmony_gene_list.csv")
+dog.df <- read.csv("../output/viln/allCells_clean/allCells_clean_clusterID2_integrated.harmony_gene_list.csv") # need to convert these to human gene sybmols
+df <- as.data.frame(unique(dog.df$gene))
+colnames(df) <- "gene"
+geneConverts <- orthogene::convert_orthologs(gene_df = df,
+                                        gene_input = "gene", 
+                                        gene_output = "column", 
+                                        input_species = "dog",
+                                        output_species = "human",
+                                        non121_strategy = "drop_both_species") 
+dog.df <- dog.df %>% left_join(geneConverts, by = c("gene" = "input_gene"))
+dog.df <- na.omit(dog.df)
 human.df <- read.csv("../output/viln/manton/manton_bm_gene_list.csv")
 
 #check the data quality
@@ -231,6 +248,64 @@ ht <- Heatmap(t(res1), #name = "mat", #col = col_fun,
              )
 draw(ht, padding = unit(c(2, 12, 2, 5), "mm"),heatmap_legend_side = "top")
 dev.off()
+
+
+
+
+### Transfer labels over from https://doi.org/10.1158/2159-8290.CD-22-1297
+hu.reference <- readRDS("../output/s3/manton_ref_res0.8_dims45_dist0.2_neigh20_S3.rds")
+
+#transfer scArches_Cluster annotations
+ref.anchors <- FindTransferAnchors(reference = hu.reference, query = seu.obj, dims = 1:30,
+    reference.reduction = "pca", features = rownames(seu.obj)[rownames(seu.obj) %in% rownames(hu.reference)])
+predictions <- TransferData(anchorset = ref.anchors, refdata = hu.reference$mantonID, dims = 1:30)
+seu.obj <- AddMetaData(seu.obj, metadata = predictions)
+
+
+#plot the previously annotated labels (only for healthy cells)
+pi <- DimPlot(seu.obj, 
+              reduction = "umap.integrated.harmony", 
+              group.by = "predicted.id",
+              split.by = "predicted.id",
+              pt.size = 0.1,
+              ncol = 5,
+              repel = F
+)
+p <- formatUMAP(plot = pi) + NoLegend()
+ggsave(paste0("../output/", outName, "/", outName, "_mantonID_split_UMAP.png"), width = 14, height = 14)
+
+
+#plot transfered labels
+pi <- DimPlot(seu.obj, 
+              reduction = "umap.integrated.harmony", 
+              group.by = "predicted.id",
+              pt.size = 0.1,
+              label = T,
+              label.box = T,
+              repel = T
+)
+p <- formatUMAP(plot = pi) + NoLegend()
+ggsave(paste0("../output/", outName, "/", outName, "_mantonID_transfer_UMAP.png"), width = 7, height = 7)
+
+
+#transfer lsc_class annotations
+predictions <- TransferData(anchorset = ref.anchors, refdata = hu.reference$lsc_class, dims = 1:30)
+seu.obj <- AddMetaData(seu.obj, metadata = predictions)
+
+
+seu.obj$predicted.id <- factor(seu.obj$predicted.id)
+#inspect data for proper import -- looks good
+pi <- DimPlot(seu.obj, 
+              reduction = "umap.integrated", 
+              group.by = "predicted.id",
+              split.by = "predicted.id",
+              pt.size = 0.1,
+              ncol = 3,
+              label = F,
+              label.box = F,
+              repel = F
+) + NoLegend()
+ggsave(paste0("../output/", outName, "/", outName, "_lsc_class_transfer_UMAP.png"), width = 12, height = 4)
 
 
 
