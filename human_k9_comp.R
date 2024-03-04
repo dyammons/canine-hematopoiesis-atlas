@@ -114,12 +114,34 @@ gc()
 #update user
 message(paste0(Sys.time(), " INFO: file saved. moving to plot hierchical clustering."))
 
+
 #reload in the integrated object
 # seu.obj <- readRDS("../output/s3/integrated_v4_res0.8_dims45_dist0.2_neigh20_S3.rds")
 
 #tag cell type labels with species labels to provide contrast
-seu.obj$cellSource <- ifelse(grepl("Manton", seu.obj$orig.ident), "Human", "Canine")    
-seu.obj$type <- ifelse(grepl("Canine", seu.obj$cellSource), paste0("c_", seu.obj$minorIdent), paste0("hu_", seu.obj$mantonID))    
+seu.obj$cellSource <- ifelse(grepl("Manton", seu.obj$orig.ident), "Human", "Canine")
+
+#load in the processed data for further work up
+seu.obj.k9_anno <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.6_dims45_dist0.15_neigh20_S3.rds")
+seu.obj.k9_anno <- loadMeta(seu.obj = seu.obj.k9_anno, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
+df <- seu.obj.k9_anno@meta.data %>% rownames_to_column() %>% select(rowname, celltype)
+df <- seu.obj@meta.data %>% rownames_to_column() %>% left_join(df, by = "rowname")
+table(is.na(df$celltype))
+df <- df %>% mutate(celltype = ifelse(cellSource == "Canine", 
+                                      ifelse(is.na(celltype), as.character(minorIdent), as.character(celltype)), NA))
+table(is.na(df$celltype))
+table(seu.obj$cellSource)
+rownames(df) <- df$rowname
+df$rowname <- NULL
+seu.obj@meta.data <- df
+
+seu.obj$type <- as.factor(ifelse(grepl("Canine", seu.obj$cellSource), paste0("c_", seu.obj$celltype), paste0("hu_", seu.obj$mantonID)))
+table(seu.obj$type)
+
+#remove unwanted cell types (aka those that were not annotated)
+Idents(seu.obj) <- "type"
+seu.obj <- subset(seu.obj, invert = T, idents = levels(seu.obj$type)[table(seu.obj$type) < 23][1:16])
+seu.obj$type <- droplevels(seu.obj$type)
 
 #extract data to plot
 metadata <- seu.obj@meta.data
@@ -127,7 +149,7 @@ expression <- as.data.frame(t(as.matrix(seu.obj@assays$integrated@data)))
 expression$anno_merge <- seu.obj@meta.data[rownames(expression),]$type
 
 #get average expression by cluster
-avg_expression <- expression %>% group_by(anno_merge) %>% summarise(across(where(is.numeric), mean)) %>% as.data.frame()
+avg_expression <- expression %>% group_by(anno_merge) %>% summarise(across(where(is.numeric), sum)) %>% as.data.frame()
 rownames(avg_expression) <- avg_expression$anno_merge
 avg_expression$anno_merge <- NULL
 
@@ -149,109 +171,100 @@ ggsave(paste("../output/", outName, "/", outName, "_ggTree.png", sep = ""), widt
 message(paste0(Sys.time(), " INFO: evlauting gene expression intersections between species."))
 
 #load in preprocessed data
-seu.obj.hu <- readRDS("../output/s3/manton_ref_res0.8_dims45_dist0.2_neigh20_S3.rds")
-seu.obj.dog <- readRDS("../output/s3/allCellslabTransfer_S3.rds")
+seu.obj.hu <- subset(seu.obj, subset = cellSource == "Human")
+seu.obj.hu <- JoinLayers(seu.obj.hu)
+seu.obj.dog <- subset(seu.obj, subset = cellSource == "Canine")
+seu.obj.dog <- JoinLayers(seu.obj.dog)
+
+dog.meta <- "celltype"
 
 seu.obj.hu[[hu.meta]] <- droplevels(seu.obj.hu[[hu.meta]])
+seu.obj.dog[[dog.meta]] <- droplevels(seu.obj.dog[[dog.meta]])
 
-#find overlapping features
+#find overlapping features to only use features expressed in both species
 interSECT <- rownames(seu.obj.hu)[rownames(seu.obj.hu) %in% rownames(seu.obj.dog)]
 
-#run FindAllMarkers only including 1:1 orthologoues - on human
+#run FindAllMarkers - on human
 vilnPlots(seu.obj = seu.obj.hu, inFile = NULL, groupBy = hu.meta, numOfFeats = 24, outName = "human",
-                      outDir = "", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^ENSCAF", "^RPS"), assay = "RNA", 
+                      outDir = "../output/viln/human/", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^ENSCAF", "^RPS"), 
                       min.pct = 0.25, only.pos = T, resume = F, resumeFile = NULL, returnViln = F, features = interSECT
                      )
 
-#run FindAllMarkers only including 1:1 orthologoues - on dog
+#run FindAllMarkers - on dog
 vilnPlots(seu.obj = seu.obj.dog, inFile = NULL, groupBy = dog.meta, numOfFeats = 24, outName = "dog",
-                      outDir = "", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^ENSCAF", "^RPS"), assay = "RNA", 
+                      outDir = "../output/viln/dog/", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^ENSCAF", "^RPS"),
                       min.pct = 0.25, only.pos = T, resume = F, resumeFile = NULL, returnViln = F, features = interSECT
                      )
 
 
-############ CODE BELOW IS UNTESTED ############
+#read in the cell type gene lists
+dog.df <- read.csv("../output/viln/dog/dog_celltype_gene_list.csv") # need to convert these to human gene sybmols
+human.df <- read.csv("../output/viln/human/human_mantonID_gene_list.csv")
 
-stop()
+#check the data quality
+dog.df %>% group_by(cluster) %>% summarize(nn = n()) %>% summarize(min = min(nn))
+human.df %>% group_by(cluster) %>% summarize(nn = n()) %>% summarize(min = min(nn))
 
-# #read in the cell type gene lists
-# dog.df <- read.csv("../output/viln/allCells_clean/allCells_clean_clusterID2_integrated.harmony_gene_list.csv") # need to convert these to human gene sybmols
-# df <- as.data.frame(unique(dog.df$gene))
-# colnames(df) <- "gene"
-# geneConverts <- orthogene::convert_orthologs(gene_df = df,
-#                                         gene_input = "gene", 
-#                                         gene_output = "column", 
-#                                         input_species = "dog",
-#                                         output_species = "human",
-#                                         non121_strategy = "drop_both_species") 
-# dog.df <- dog.df %>% left_join(geneConverts, by = c("gene" = "input_gene"))
-# dog.df <- na.omit(dog.df)
-# human.df <- read.csv("../output/viln/manton/manton_bm_gene_list.csv")
-
-# #check the data quality
-# dog.df %>% group_by(cluster) %>% summarize(nn = n()) %>% summarize(min = min(nn))
-# human.df %>% group_by(cluster) %>% summarize(nn = n()) %>% summarize(min = min(nn))
-
-# #calc the jaccard similarity index
-# res <- lapply(unique(dog.df$cluster), function(x){
-#     dog.list <- dog.df[dog.df$cluster == x, ] %>% .$gene
+#calc the jaccard similarity index
+res <- lapply(unique(dog.df$cluster), function(x){
+    dog.list <- dog.df[dog.df$cluster == x, ] %>% .$gene
     
-#     res_pre <- lapply(unique(human.df$cluster), function(y){
-#         human.list <- human.df[human.df$cluster == y, ] %>% .$gene
+    res_pre <- lapply(unique(human.df$cluster), function(y){
+        human.list <- human.df[human.df$cluster == y, ] %>% .$gene
         
-#         interSect <- length(intersect(human.list, dog.list)) 
-#         uni <- length(human.list) + length(dog.list) - interSect 
-#         JaccardIndex <- interSect/uni
-#         names(JaccardIndex) <- x
+        interSect <- length(intersect(human.list, dog.list)) 
+        uni <- length(human.list) + length(dog.list) - interSect 
+        JaccardIndex <- interSect/uni
+        names(JaccardIndex) <- x
         
-#         return(JaccardIndex)
-#     })
+        return(JaccardIndex)
+    })
     
-#     res_pre <- do.call(rbind, res_pre)
-#     rownames(res_pre) <- unique(human.df$cluster)
-#     return(res_pre)
+    res_pre <- do.call(rbind, res_pre)
+    rownames(res_pre) <- unique(human.df$cluster)
+    return(res_pre)
     
-# })
+})
     
-# res1 <- do.call(cbind, res)
+res1 <- do.call(cbind, res)
 
-# # #order the celltypes
-# # rowTarg <- c("Endothelial","Fibroblast" ,"Osteoblast","Cycling osteoblast",
-# #        "CD14_monocyte","NR4A3_Macrophage","TXNIP_Macrophage","FABP5_Macrophage",
-# #        "IFN-TAM","Pre-OC","Mature-OC","pDC","cDC2","Mast",
-# #        "CD8 T cell","CD4 T cell","IFN-sig T cell","NK cell",
-# #        "Plasma cell","B cell")
-# # colTarg <- c("Endothelial cell","Fibroblast","Osteoblast_1","Osteoblast_2","Osteoblast_3","Hypoxic_osteoblast",
-# #          "IFN-osteoblast","Osteoblast_cycling","CD4+_TIM","CD4-_TIM","ANGIO_TAM","TAM_INT","TAM_ACT","LA-TAM_SPP2_hi",
-# #          "LA-TAM_C1QC_hi","IFN-TAM","Cycling_OC","CD320_OC","Mature_OC","pDC","cDC1","cDC2","mregDC",
-# #          "Mast cell","Neutrophil","CD8 T cell","CD4 T cell","T_IFN","T_cycling","NK","Plasma cell","B cell")
-# # res1 <- res1[match(rowTarg, rownames(res1)),]        
-# # res1 <- res1[ ,match(colTarg, colnames(res1))]   
+# #order the celltypes
+# rowTarg <- c("Endothelial","Fibroblast" ,"Osteoblast","Cycling osteoblast",
+#        "CD14_monocyte","NR4A3_Macrophage","TXNIP_Macrophage","FABP5_Macrophage",
+#        "IFN-TAM","Pre-OC","Mature-OC","pDC","cDC2","Mast",
+#        "CD8 T cell","CD4 T cell","IFN-sig T cell","NK cell",
+#        "Plasma cell","B cell")
+# colTarg <- c("Endothelial cell","Fibroblast","Osteoblast_1","Osteoblast_2","Osteoblast_3","Hypoxic_osteoblast",
+#          "IFN-osteoblast","Osteoblast_cycling","CD4+_TIM","CD4-_TIM","ANGIO_TAM","TAM_INT","TAM_ACT","LA-TAM_SPP2_hi",
+#          "LA-TAM_C1QC_hi","IFN-TAM","Cycling_OC","CD320_OC","Mature_OC","pDC","cDC1","cDC2","mregDC",
+#          "Mast cell","Neutrophil","CD8 T cell","CD4 T cell","T_IFN","T_cycling","NK","Plasma cell","B cell")
+# res1 <- res1[match(rowTarg, rownames(res1)),]        
+# res1 <- res1[ ,match(colTarg, colnames(res1))]   
        
-# #plot the data
-# png(file = paste0("../output/", outName, "/", outName, "_jaccard.png"), width=4000, height=4000, res=400)
-# par(mfcol=c(1,1))         
-# ht <- Heatmap(t(res1), #name = "mat", #col = col_fun,
-#               name = "Jaccard similarity index",
-#               cluster_rows = F,
-#               row_title = "Canine cell types",
-#               row_title_gp = gpar(fontsize = 24),
-#               col=viridis(option = "magma",100),
-#               cluster_columns = F,
-#               column_title = "Human cell types",
-#               column_title_gp = gpar(fontsize = 24),
-#               column_title_side = "bottom",
-#               column_names_rot = 45,
-#               heatmap_legend_param = list(legend_direction = "horizontal", title_position = "topleft",  title_gp = gpar(fontsize = 16), 
-#                                           labels_gp = gpar(fontsize = 8), legend_width = unit(6, "cm")),
-#              )
-# draw(ht, padding = unit(c(2, 12, 2, 5), "mm"),heatmap_legend_side = "top")
-# dev.off()
+#plot the data
+png(file = paste0("../output/", outName, "/", outName, "_jaccard.png"), width=4000, height=4000, res=400)
+par(mfcol=c(1,1))         
+ht <- Heatmap(t(res1), #name = "mat", #col = col_fun,
+              name = "Jaccard similarity index",
+              cluster_rows = T,
+              row_title = "Canine cell types",
+              row_title_gp = gpar(fontsize = 24),
+              col=viridis(option = "magma",100),
+              cluster_columns = T,
+              column_title = "Human cell types",
+              column_title_gp = gpar(fontsize = 24),
+              column_title_side = "bottom",
+              column_names_rot = 45,
+              heatmap_legend_param = list(legend_direction = "horizontal", title_position = "topleft",  title_gp = gpar(fontsize = 16), 
+                                          labels_gp = gpar(fontsize = 8), legend_width = unit(6, "cm")),
+             )
+draw(ht, padding = unit(c(2, 12, 2, 5), "mm"),heatmap_legend_side = "top")
+dev.off()
 
 
 
 
-# ### Transfer labels over from https://doi.org/10.1158/2159-8290.CD-22-1297
+# ### Transfer labels over from 
 # hu.reference <- readRDS("../output/s3/manton_ref_res0.8_dims45_dist0.2_neigh20_S3.rds")
 
 # #transfer scArches_Cluster annotations
@@ -305,9 +318,6 @@ stop()
 #               repel = F
 # ) + NoLegend()
 # ggsave(paste0("../output/", outName, "/", outName, "_lsc_class_transfer_UMAP.png"), width = 12, height = 4)
-
-
-
 
 #update user of completion
 message(paste0(Sys.time(), " INFO: end of script!"))
