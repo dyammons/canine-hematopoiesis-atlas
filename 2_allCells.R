@@ -385,8 +385,22 @@ pi <- DimPlot(seu.obj,
               label.box = T,
               repel = F,
 ) + NoLegend()
-p <- cusLabels(plot = pi, labCol = colz.df$labCol, smallAxes = T)
+p <- cusLabels(plot = pi, labCol = colz.df$labCol, smallAxes = T, textSize = 5, size = 9)
 ggsave(paste0("../output/", outName, "/", outName, "_Idents_UMAP.png"), width = 7, height = 7)
+
+pi <- DimPlot(seu.obj, 
+              reduction = reduction, 
+              group.by = "minorIdent",
+              split.by = "minorIdent",
+              ncol = 5,
+              pt.size = 0.1,
+              label = F,
+              label.box = F,
+              repel = F,
+) + NoLegend()
+p <- formatUMAP(plot = pi)
+ggsave(paste0("../output/", outName, "/", outName, "_minorIdents_UMAP.png"), width = 14, height = 14)
+
 
 ### Supp data - generate violin plots of defining features
 vilnPlots(seu.obj = seu.obj, groupBy = "clusterID2_integrated.harmony", numOfFeats = 24, outName = outName,
@@ -399,6 +413,144 @@ pi <- autoDot(seu.integrated.obj = seu.obj, inFile = "../output/viln/allCells_cl
                     ) + theme(legend.box="vertical",
                               legend.position = "right") + scale_fill_manual(values = colz.df$majCol)
 ggsave(paste0("../output/", outName, "/", outName, "_autodot_branches.png"), width = 16, height = 16)
+
+
+### Fig 3e - heatmap by cluster for each sample with CD4/CD8 proportion
+colz <- colz.df$majCol[(1+c(10,4,5,29,25,20,15,17,27,13,26,12,30,21,11,19,14,24,1,18,16,8,23,9,22,6,7,0,2,3,28))]
+seu.obj$type <- paste0(seu.obj$clusterID2_integrated.harmony, "-", seu.obj$majorID)
+
+#set levels for ordering
+seu.obj$clusterID2_integrated.harmony <- factor(seu.obj$clusterID2_integrated.harmony, levels = c(10,4,5,29,
+                                                                                                  25,20,15,
+                                                                                                  17,27,13,26,
+                                                                                                  12,30,21,11,19,14,24,1,18,16,
+                                                                                                  8,23,9,22,6,7,0,2,3,28
+                                                                                                 )
+                                               )
+
+#extract metadata and data
+metadata <- seu.obj@meta.data
+expression <- as.data.frame(t(seu.obj@assays$RNA$data)) #use log noralized count
+expression$anno_merge <- seu.obj@meta.data[rownames(expression),]$type
+
+#get cell type expression averages - do clus avg expression by sample
+clusAvg_expression <- expression %>% group_by(anno_merge) %>% summarise(across(where(is.numeric), mean)) %>% as.data.frame()
+rownames(clusAvg_expression) <- clusAvg_expression$anno_merge
+clusAvg_expression$anno_merge <- NULL     
+
+df <- rownames(clusAvg_expression) %>% as.data.frame()
+colnames(df) <- "type"
+df$clus <- unlist(lapply(df$type, function(x){strsplit(x,"-")[[1]][1]}))
+df$branch <- unlist(lapply(df$type, function(x){strsplit(x,"-")[[1]][2]}))
+df$branch <- factor(df$branch, levels = c("HSC", "Erythroid", "Monocytic", "Lymphocytic", "Neutrophilic"))
+df$clus <- factor(df$clus, levels = levels(seu.obj$clusterID2_integrated.harmony))
+df$odor <- as.numeric(df$clus)
+df <- df %>% arrange(odor)
+
+#load in feats that define
+sig.df <- read.csv("../output/viln/allCells_clean/allCells_clean_clusterID2_integrated.harmony_gene_list.csv")
+sig.df <- sig.df %>% filter(p_val_adj < 0.01)
+sig.df$cluster <- factor(sig.df$cluster, levels = levels(seu.obj$clusterID2_integrated.harmony))
+sig.df <- sig.df %>% left_join(df[ ,2:3], by = c("cluster" = "clus"))
+sig.df$odor <- as.numeric(sig.df$cluster)
+
+#extract labels to plot - tweak to be by branch??
+lab.df <- sig.df[!grepl("ENSCAF", sig.df$gene), ]
+text_list <- rev(split(lab.df$gene, lab.df$branch))
+text_list <- lapply(text_list, function(x){c(paste0(paste(x[1:3], collapse = ", "),","), 
+                                             paste0(paste(x[4:6], collapse = ", "),","),
+                                             paste0(paste(x[7:9], collapse = ", "),","),
+                                             paste(x[10:12], collapse = ", ")
+                                            )})
+
+#finish ordering
+sig.df <- sig.df[!duplicated(sig.df[,"gene"]), ]
+sig.df <- sig.df %>% arrange(odor, desc(p_val_adj))
+geneOrder <- rev(sig.df$gene)
+
+#filter matrix for feats that define and scale by row
+clusAvg_expression <- clusAvg_expression[ ,colnames(clusAvg_expression) %in% sig.df$gene]
+mat_scaled <- t(apply(t(clusAvg_expression), 1, scale))
+colnames(mat_scaled) <- rownames(clusAvg_expression)
+length(geneOrder) == nrow(mat_scaled)
+mat_scaled <- mat_scaled[ ,match(df$type, colnames(mat_scaled))]
+mat_scaled <- mat_scaled[match(geneOrder, rownames(mat_scaled)), ]        
+
+#set annotations
+branch <- c("#AFDBF6", "#C8E1CC", "#C1C1C1", "#F97C7C", "#B18EEA")
+names(branch) <- unique(seu.obj$majorID)
+clus <- colz
+names(clus) <- levels(seu.obj$clusterID2_integrated.harmony)
+heat_col <- viridis(option = "magma",100)
+
+ha <- HeatmapAnnotation(
+    Branch = unlist(lapply(colnames(mat_scaled), function(x){strsplit(x,"-")[[1]][2]})),
+    Cluster = unlist(lapply(colnames(mat_scaled), function(x){strsplit(x,"-")[[1]][1]})),
+    border = TRUE,
+    col = list(Branch = branch, Cluster = clus),
+    show_legend = c(FALSE, TRUE),
+    annotation_legend_param = list(
+        Branch = list(
+            nrow = 1
+        ),
+        Cluster = list(
+            nrow = 3
+        )
+    )
+)
+ra <- rowAnnotation(foo = anno_empty(border = FALSE, width = max_text_width(unlist(text_list)) + unit(4, "mm")))
+
+
+#plot the data
+ht <- Heatmap(
+    mat_scaled,
+    name = "mat",
+    cluster_rows = F,
+    row_title_gp = gpar(fontsize = 24),
+    show_row_names=F,
+    col=heat_col,
+    cluster_columns = F,
+    top_annotation = ha,
+    show_column_names = F,
+    right_annotation = ra,
+    cluster_row_slices=F,
+    column_split = df$branch,
+    row_split = factor(rev(sig.df$branch), levels = rev(sig.df[!duplicated(sig.df[,"branch"]), ]$branch)),
+    row_title = NULL,
+    column_title = NULL,
+    heatmap_legend_param = list(
+            title = "Scaled expression",
+            direction = "horizontal"
+        )
+)
+
+#save the plot
+png(file = paste0("../output/", outName, "/", outName, "_heatinUp.png"), width=5000, height=4000, res=400)
+par(mfcol=c(1,1))    
+draw(ht, padding = unit(c(2, 2, 2, 2), "mm"), merge_legend = TRUE, heatmap_legend_side = "bottom", 
+    annotation_legend_side = "bottom")
+
+for(i in 1:length(levels(df$branch))) {
+    decorate_annotation("Branch", slice = i, {
+        grid.text(levels(df$branch)[i], just = "center")
+    })
+}
+
+for(i in 1:length(rev(sig.df[!duplicated(sig.df[,"branch"]), ]$branch))) {
+    decorate_annotation("foo", slice = i, {
+        grid.text(paste(text_list[[i]], collapse = "\n"), x = unit(1, "mm"), just = "left",
+                  gp = gpar(fontsize = 10))
+    })
+}
+
+# #problem that the heatmap is sliced by branch not cluster
+# for(i in 1:length(levels(df$clus))) {
+#     decorate_annotation("Cluster", slice = i, {
+#         grid.text(levels(df$clus)[i], just = "center")
+#     })
+# }
+
+dev.off()
 
 
 # ###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
