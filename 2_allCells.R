@@ -314,26 +314,89 @@ cell_group_df <- tibble(cell = row.names(colData(cds)),
 agg_mat <- aggregate_gene_expression(cds, gene_module_df, cell_group_df)
 row.names(agg_mat) <- str_c("Module ", row.names(agg_mat))
 
-png(file = paste0("../output/", outName, "/", outName, "_modules_degs.png"), width = 1500, height = 3000, res = 400)
+png(file = paste0("../output/", outName, "/", outName, "_modules_degs.png"), width = 1500, height = 4000, res = 400)
 par(mfcol=c(1,1))         
 pheatmap(agg_mat, scale="column", clustering_method="ward.D2")
 dev.off()
 
-features <- gene_module_df %>% filter(module == 3) %>% pull(id) %>% head(4)
-p <- prettyFeats(seu.obj = seu.obj, nrow = 1, ncol = 4, features = features, reduction = "umap.integrated.harmony",
+set.seed(666)
+features <- gene_module_df %>% filter(module %in% c(52,11,18,30,53,41,36,4,32)) %>% pull(id) 
+features <- sample(features,6)
+p <- prettyFeats(seu.obj = seu.obj, nrow = 2, ncol = 3, features = features, reduction = "umap.integrated.harmony",
                     color = "black", order = F, pt.size = 0.0000001, title.size = 10, noLegend = T)
-ggsave(paste0("../output/", outName, "/", outName, "_cds_degs.png"), width = 8, height = 2)
+ggsave(paste0("../output/", outName, "/", outName, "_cds_degs.png"), width = 8, height = 5)
+
+
+cds.sub <- cds[rownames(cds) %in% features,
+               colData(cds)$majorID %in% c("Neutrophil")]
+p <- plot_cells(cds.sub,
+           color_cells_by = "minorIdent",
+                label_principal_points = T, 
+           label_groups_by_cluster=FALSE,
+           label_leaves=F,
+           label_branch_points=F)
+ggsave(paste0("../output/", outName, "/", outName, "_cds_SUB_branch_UMAP.png"), width = 7, height = 7)
+
+cds.sub <- order_cells(cds.sub, root_pr_nodes = "Y_457")
+# cds.sub <- cds.sub[,Matrix::colSums(exprs(cds.sub)) != 0] 
+# cds.sub <- estimate_size_factors(cds.sub)
+p <- plot_genes_in_pseudotime(cds.sub,
+                         color_cells_by="clusterID_integrated.harmony",
+                         min_expr=0.5,
+                        label_by_short_name = F)
+
+d <- as.data.frame(p$data)
+
+plot_genes_in_pseudotime(cds.sub,
+                         color_cells_by="clusterID_integrated.harmony",
+                         min_expr=1,
+                        label_by_short_name = F) + ylim(0, max(d$adjusted_expression))
+
+ggsave(paste0("../output/", outName, "/", outName, "_cds_SUB_GEX_BY_TIME.png"), width = 7, height = 7)
 
 
 
-AFD_genes <- c("gcy-8", "dac-1", "oig-8")
-AFD_lineage_cds <- cds[rowData(cds)$gene_short_name %in% AFD_genes,
-                       colData(cds)$cell.type %in% c("AFD")]
-AFD_lineage_cds <- order_cells(AFD_lineage_cds)
+#gene expression by pseudotime
+ptime <- pseudotime(cds, reduction_method = "UMAP")
+seu.obj$ptime <- ptime
 
-plot_genes_in_pseudotime(AFD_lineage_cds,
-                         color_cells_by="embryo.time.bin",
-                         min_expr=0.5)
+features <- c("MPO","CAMP","CD4","SELL") #only works with 1 feat rn
+colorBy <- "clusterID_integrated.harmony" #seu metadata slot to color data by
+plotBy <- "ptime" #pseudotime data to use on the x axis -- match with the name of a metadata slot
+clus <- c("Neutrophil")
+rmZeros <- F #option to remove zero values - probablaly can keep it at false
+bin.size <- 5
+
+seu.obj.sub <- subset(seu.obj, majorID %in% clus)
+single.plot <- lapply(features, function(x){
+    df <- FetchData(object = seu.obj.sub, vars = c('cellSource', 'name', colorBy, plotBy, x), layer = "data")
+    colnames(df)[3] <- "cluster"
+    colnames(df)[5] <- "feature"
+
+    if(rmZeros){
+        df <- df[df[ ,"feature"] > 0, ]
+    }
+
+    df <- df %>% na.omit() %>% mutate(feat = x,
+                                      ptime = (ptime - sort(ptime)[3]) / (rev(sort(ptime))[3] - sort(ptime)[3]) 
+                                     ) %>% arrange(ptime) %>% mutate(avg = zoo::rollmean(feature, k = bin.size, fill = NA))
+    return(df)
+})
+
+df <- do.call(rbind, single.plot) %>% na.omit() 
+
+colz.df <- read.csv("./metaData/allCells_ID_disconected_highRes.csv")
+colz <- colz.df$majCol[(1+c(5,6,3,2,0))]
+df$feat <- factor(df$feat, levels = features)
+p <- ggplot(data = df, aes(x = ptime, y = avg, color = cluster)) + theme_classic() + facet_wrap(vars(feat), ncol = 1) + geom_point() +
+geom_smooth(se = FALSE, colour = "black")  + labs(x = "Pseudotime", y = "Log2 normalized count") + NoLegend() + scale_colour_manual(values = colz) +
+scale_x_continuous(breaks = c(0,1))
+ggsave(paste0("../output/", outName, "/", outName, "_feats_byTime.png"), width = 4, height = 6)
+
+p <- RidgePlot(seu.obj.sub, features = "ptime", group.by = "clusterID_integrated.harmony")
+ggsave(paste0("../output/", outName, "/", outName, "_ridge_byTime.png"), width = 5, height = 5)
+
+
 
 #save the .cds object
 saveRDS(cds, file = "../output/s3/240220_CDS_bm_cd34_removed_disconnected.rds")
