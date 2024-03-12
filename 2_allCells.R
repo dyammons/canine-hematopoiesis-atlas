@@ -150,30 +150,49 @@ for (x in list("integrated.harmony", "integrated.joint", "integrated.rcpa")) {
 #override preivous object
 saveRDS(seu.obj, "../output/s3/240201_bm_cd34_removed_disconnected.rds")
 
+#evaluate clustering resolution and adjust the res accordingly
+clusTree(seu.obj = seu.obj, 
+                     dout = "../output/clustree/", outName = paste0(outName, "_highRes_integrated.harmony"), 
+                     test_dims = 45, 
+                     resolution = c(0.01, 0.05, 0.1, seq(0.2, 2, 0.1)), 
+                     algorithm = 3, 
+                     prefix = "RNA_snn_res.",
+         reduction = "integrated.harmony"
+                    )
+
+#complete clustering at a higher resolution -- DO NOT RUN; can skip to load in the object
+seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = paste0(outName, "_highRes_integrated.harmony"), 
+                       final.dims = 45, final.res = 1.4, stashID = "clusterID2", algorithm = 3, min.dist = 0.15, n.neighbors = 20,
+                       prefix = "RNA_snn_res.", assay = "RNA", reduction = "integrated.harmony",
+                       saveRDS = T, return_obj = T, returnFeats = T,
+                       features = c("PTPRC", "CD3E", "CD8A", "GZMA", 
+                                    "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
+                                    "CD4", "MS4A1", "PPBP","HBM")
+                      )
+
 ################################################# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 #######   end additional preprocessing   ######## <<<<<<<<<<<<<<
 ################################################# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
 
 
 ############################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 #######   Begin preliminary analysis   ######## <<<<<<<<<<<<<<
 ############################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-# #load in the object
-seu.obj <- readRDS("../output/s3/240201_bm_cd34_removed_disconnected.rds")
+
+#load in the processed data for further work up
+seu.obj <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.rds")
+table(seu.obj$clusterID2_integrated.harmony, seu.obj$minorIdent)
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majorID")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majCol")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "majCol", metaAdd = "labCol")
+seu.obj$clusterID2_integrated.harmony <- factor(seu.obj$clusterID2_integrated.harmony, levels = 0:max(as.numeric(names(table(seu.obj$clusterID2_integrated.harmony)))))
+
 outName <- "allCells_clean"
 outName_full <- "240201_bm_cd34_clusterID_integrated.harmony"
-clusID_main <- "clusterID_integrated.harmony"
+clusID_main <- "clusterID2_integrated.harmony"
 reduction <- "umap.integrated.harmony"
-
-#load metadata
-seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected.csv", groupBy = "clusterID_integrated.harmony", metaAdd = "majorID")
-seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/refColz.csv", groupBy = "orig.ident", metaAdd = "cellSource")
-seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/refColz.csv", groupBy = "orig.ident", metaAdd = "name")
-seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/refColz.csv", groupBy = "name", metaAdd = "colz")
-seu.obj$clusterID_integrated.harmony <- factor(seu.obj$clusterID_integrated.harmony, levels = 0:max(as.numeric(names(table(seu.obj$clusterID_integrated.harmony)))))
-seu.obj <- convertTOclusID(seu.obj = seu.obj, metaSlot = "majorID", newMetaName = "major_clusID")
 
 
 ### UMAP of the reduced data
@@ -206,241 +225,6 @@ ExportToCB_cus(seu.obj = seu.obj, dataset.name = outName, outDir = "../output/cb
                           "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
                           "CD4", "MS4A1", "PPBP", "HBM")
 )    
-
-
-##################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-#######   Begin lineage analysis (monocle3)  ######## <<<<<<<<<<<<<<
-##################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-### Do not run -- use code block below
-### The noted code completes monocle precrocessing then run trajectory analysis.
-### This yeilded similar results to the later apporach, so for sake of consitency
-### the second approach was used as it runs monocle using the Seurat UMAP embeddings.
-
-# #create cell data set from raw data in Seurat object
-# cnt_mat <- seu.obj@assays$RNA@layers$counts
-# rownames(cnt_mat) <- rownames(seu.obj)
-# colnames(cnt_mat) <- colnames(seu.obj)
-# gene_annotation <- as.data.frame(rownames(seu.obj))
-# gene_annotation$gene_short_name <- rownames(seu.obj)
-# rownames(gene_annotation) <- rownames(seu.obj)
-# cds <- new_cell_data_set(cnt_mat,
-#                          cell_metadata = seu.obj@meta.data,
-#                          gene_metadata = gene_annotation)
-
-
-# #preprocess using monocle
-# cds <- preprocess_cds(cds, num_dim = 45)
-# cds <- align_cds(cds, alignment_group = "orig.ident")
-# cds <- reduce_dimension(cds, umap.n_neighbors = 10)
-# p <- plot_cells(cds, label_groups_by_cluster=FALSE,  color_cells_by = "minorIdent")
-# p <- formatUMAP(p)
-# ggsave(paste0("../output/", outName, "/", outName, "_cds_orig.ident_UMAP.png"), width = 7, height = 7)
-
-# #get the pseudotime
-# cds <- cluster_cells(cds, k = 30)
-# cds <- learn_graph(cds, use_partition = FALSE)
-# p <- plot_cells(cds,
-#            color_cells_by = "minorIdent",
-#                 label_principal_points = T, 
-#            label_groups_by_cluster=FALSE,
-#            label_leaves=F,
-#            label_branch_points=F)
-# ggsave(paste0("../output/", outName, "/", outName, "_cds_branch_UMAP.png"), width = 7, height = 7)
-
-# cds <- order_cells(cds, root_pr_nodes = "Y_201")
-# p <- plot_cells(cds,
-#            color_cells_by = "pseudotime",
-#            label_cell_groups=FALSE,
-#            label_leaves=FALSE,
-#            label_branch_points=FALSE,
-#            graph_label_size=1.5)
-# ggsave(paste0("../output/", outName, "/", outName, "_cds_pseudo_UMAP.png"), width = 7, height = 7)
-
-
-#create cds object that retains the Seurat reductions
-seu.obj@reductions$umap <- seu.obj@reductions$umap.integrated.harmony
-cds <- SeuratWrappers::as.cell_data_set(seu.obj,
-                                        assay = "RNA",
-                                        reductions = "umap",
-                                        default.reduction = "umap",
-                                        graph = "RNA_snn",
-                                        group.by = "clusterID_integrated.harmony")
-cds <- cluster_cells(cds)
-cds <- learn_graph(cds, use_partition = FALSE)
-p <- plot_cells(cds,
-           color_cells_by = "minorIdent",
-                label_principal_points = T, 
-           label_groups_by_cluster=FALSE,
-           label_leaves=F,
-           label_branch_points=F)
-ggsave(paste0("../output/", outName, "/", outName, "_cds_branch_UMAP.png"), width = 7, height = 7)
-
-cds <- order_cells(cds, root_pr_nodes = "Y_305")
-p <- plot_cells(cds,
-                color_cells_by = "pseudotime",
-               label_cell_groups=FALSE,
-               label_leaves=FALSE,
-                show_trajectory_graph = T,
-              label_branch_points = T,
-              label_roots = FALSE,
-           graph_label_size=1.5)
-formatUMAP(p) + theme(axis.title = element_blank(),
-                             panel.border = element_blank(),
-                             plot.margin = unit(c(-7, -7, -7, -7), "pt")
-                            ) + NoLegend()
-ggsave(paste0("../output/", outName, "/", outName, "_cds_pseudo_UMAP.png"), width = 7, height = 7)
-
-#look for degs overtime
-deg_res <- graph_test(cds, neighbor_graph = "principal_graph", cores = 4)
-pr_deg_ids <- row.names(subset(deg_res, q_value < 0.01) %>% arrange(q_value))
-
-p <- plot_cells(cds, genes=pr_deg_ids[1:4],
-           show_trajectory_graph=FALSE,
-           label_cell_groups=FALSE,
-           label_leaves=FALSE)
-ggsave(paste0("../output/", outName, "/", outName, "_cds_degs_UMAP.png"), width = 7, height = 7)
-
-features <- pr_deg_ids[5:8]
-p <- prettyFeats(seu.obj = seu.obj, nrow = 2, ncol = 2, features = features, reduction = "umap.integrated.harmony",
-                    color = "black", order = F, pt.size = 0.0000001, title.size = 18)
-ggsave(paste0("../output/", outName, "/", outName, "_cds_degs.png"), width = 7, height = 7)
-
-
-cds <- preprocess_cds(cds, num_dim = 45) #find alternative to running pca again... although it seems to work ok
-gene_module_df <- find_gene_modules(cds[pr_deg_ids,], resolution=c(10^seq(-6,-1)))
-cell_group_df <- tibble(cell = row.names(colData(cds)), 
-                                cell_group = colData(cds)$majorID)
-agg_mat <- aggregate_gene_expression(cds, gene_module_df, cell_group_df)
-row.names(agg_mat) <- str_c("Module ", row.names(agg_mat))
-
-png(file = paste0("../output/", outName, "/", outName, "_modules_degs.png"), width = 1500, height = 4000, res = 400)
-par(mfcol=c(1,1))         
-pheatmap(agg_mat, scale="column", clustering_method="ward.D2")
-dev.off()
-
-set.seed(666)
-features <- gene_module_df %>% filter(module %in% c(52,11,18,30,53,41,36,4,32)) %>% pull(id) 
-features <- sample(features,6)
-p <- prettyFeats(seu.obj = seu.obj, nrow = 2, ncol = 3, features = features, reduction = "umap.integrated.harmony",
-                    color = "black", order = F, pt.size = 0.0000001, title.size = 10, noLegend = T)
-ggsave(paste0("../output/", outName, "/", outName, "_cds_degs.png"), width = 8, height = 5)
-
-
-cds.sub <- cds[rownames(cds) %in% features,
-               colData(cds)$majorID %in% c("Neutrophil")]
-p <- plot_cells(cds.sub,
-           color_cells_by = "minorIdent",
-                label_principal_points = T, 
-           label_groups_by_cluster=FALSE,
-           label_leaves=F,
-           label_branch_points=F)
-ggsave(paste0("../output/", outName, "/", outName, "_cds_SUB_branch_UMAP.png"), width = 7, height = 7)
-
-cds.sub <- order_cells(cds.sub, root_pr_nodes = "Y_457")
-# cds.sub <- cds.sub[,Matrix::colSums(exprs(cds.sub)) != 0] 
-# cds.sub <- estimate_size_factors(cds.sub)
-p <- plot_genes_in_pseudotime(cds.sub,
-                         color_cells_by="clusterID_integrated.harmony",
-                         min_expr=0.5,
-                        label_by_short_name = F)
-
-d <- as.data.frame(p$data)
-
-plot_genes_in_pseudotime(cds.sub,
-                         color_cells_by="clusterID_integrated.harmony",
-                         min_expr=1,
-                        label_by_short_name = F) + ylim(0, max(d$adjusted_expression))
-
-ggsave(paste0("../output/", outName, "/", outName, "_cds_SUB_GEX_BY_TIME.png"), width = 7, height = 7)
-
-
-
-#gene expression by pseudotime
-ptime <- pseudotime(cds, reduction_method = "UMAP")
-seu.obj$ptime <- ptime
-
-features <- c("MPO","CAMP","CD4","SELL") #only works with 1 feat rn
-colorBy <- "clusterID_integrated.harmony" #seu metadata slot to color data by
-plotBy <- "ptime" #pseudotime data to use on the x axis -- match with the name of a metadata slot
-clus <- c("Neutrophil")
-rmZeros <- F #option to remove zero values - probablaly can keep it at false
-bin.size <- 5
-
-seu.obj.sub <- subset(seu.obj, majorID %in% clus)
-single.plot <- lapply(features, function(x){
-    df <- FetchData(object = seu.obj.sub, vars = c('cellSource', 'name', colorBy, plotBy, x), layer = "data")
-    colnames(df)[3] <- "cluster"
-    colnames(df)[5] <- "feature"
-
-    if(rmZeros){
-        df <- df[df[ ,"feature"] > 0, ]
-    }
-
-    df <- df %>% na.omit() %>% mutate(feat = x,
-                                      ptime = (ptime - sort(ptime)[3]) / (rev(sort(ptime))[3] - sort(ptime)[3]) 
-                                     ) %>% arrange(ptime) %>% mutate(avg = zoo::rollmean(feature, k = bin.size, fill = NA))
-    return(df)
-})
-
-df <- do.call(rbind, single.plot) %>% na.omit() 
-
-colz.df <- read.csv("./metaData/allCells_ID_disconected_highRes.csv")
-colz <- colz.df$majCol[(1+c(5,6,3,2,0))]
-df$feat <- factor(df$feat, levels = features)
-p <- ggplot(data = df, aes(x = ptime, y = avg, color = cluster)) + theme_classic() + facet_wrap(vars(feat), ncol = 1) + geom_point() +
-geom_smooth(se = FALSE, colour = "black")  + labs(x = "Pseudotime", y = "Log2 normalized count") + NoLegend() + scale_colour_manual(values = colz) +
-scale_x_continuous(breaks = c(0,1))
-ggsave(paste0("../output/", outName, "/", outName, "_feats_byTime.png"), width = 4, height = 6)
-
-p <- RidgePlot(seu.obj.sub, features = "ptime", group.by = "clusterID_integrated.harmony")
-ggsave(paste0("../output/", outName, "/", outName, "_ridge_byTime.png"), width = 5, height = 5)
-
-
-
-#save the .cds object
-saveRDS(cds, file = "../output/s3/240220_CDS_bm_cd34_removed_disconnected.rds")
-
-
-###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-#######   Investigate critical branch points  ######## <<<<<<<<<<<<<<
-###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-### This analysis is completed in sub-scripts 4_dge*.R
-### The below code block creates a high-resolution clustered
-### Seurat object.
-
-clusTree(seu.obj = seu.obj, 
-                     dout = "../output/clustree/", outName = paste0(outName, "_highRes_integrated.harmony"), 
-                     test_dims = 45, 
-                     resolution = c(0.01, 0.05, 0.1, seq(0.2, 2, 0.1)), 
-                     algorithm = 3, 
-                     prefix = "RNA_snn_res.",
-         reduction = "integrated.harmony"
-                    )
-
-#complete clustering at a higher resolution -- DO NOT RUN; can skip to load in the object
-seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = paste0(outName, "_highRes_integrated.harmony"), 
-                       final.dims = 45, final.res = 1.4, stashID = "clusterID2", algorithm = 3, min.dist = 0.15, n.neighbors = 20,
-                       prefix = "RNA_snn_res.", assay = "RNA", reduction = "integrated.harmony",
-                       saveRDS = T, return_obj = T, returnFeats = T,
-                       features = c("PTPRC", "CD3E", "CD8A", "GZMA", 
-                                    "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
-                                    "CD4", "MS4A1", "PPBP","HBM")
-                      )
-
-#load in the processed data for further work up
-# seu.obj <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.6_dims45_dist0.15_neigh20_S3.rds")
-seu.obj <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.rds")
-table(seu.obj$clusterID2_integrated.harmony, seu.obj$minorIdent)
-seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majorID")
-seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
-seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majCol")
-seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "majCol", metaAdd = "labCol")
-outName <- "allCells_clean"
-outName_full <- "240201_bm_cd34_clusterID_integrated.harmony"
-clusID_main <- "clusterID_integrated.harmony"
-reduction <- "umap.integrated.harmony"
 
 
 #create umap
@@ -637,186 +421,6 @@ for(i in 1:length(rev(sig.df[!duplicated(sig.df[,"branch"]), ]$branch))) {
 # }
 
 dev.off()
-
-
-# ###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-# #######   Begin lineage analysis (slingshot)  ######## <<<<<<<<<<<<<<
-# ###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-
-# majorColz <- c("#DFA74D","#B7DBF0", "#C59979", "#ECD58E", "#D89183" )
-
-# #rename idents
-# Idents(seu.obj) <- "clusterID_integrated.harmony"
-# clusId <- c("neut","neut","neut","neut","neut","mono","mono","eryth","eryth","HPSC","mast","bcell","bcell","bcell","bcell","bcell","bcell")
-# names(clusId) <- c(0,1,4,5,6,9,8,13,15,2,10,16,14,12,7,3,11)
-# seu.obj <- RenameIdents(seu.obj, clusId) 
-# seu.obj$braches <- Idents(seu.obj)
-# levels(seu.obj$braches) # "neut"  "mono"  "eryth" "HPSC"  "mast"  "bcell"
-
-# plot <- DimPlot(seu.obj, 
-#               reduction = "umap.integrated.harmony", 
-#               group.by = "braches",
-#               pt.size = 0.25,
-#               label = TRUE,
-#               label.box = TRUE
-#  )
-
-# p <- formatUMAP(plot = plot) + NoLegend()
-# ggsave(paste("../output/", outName, "/", outName, "_bracnch.png", sep = ""), width = 7, height = 7)
-
-
-# ### Generate violin plots of defining features
-# vilnPlots(seu.obj = seu.obj, groupBy = "braches", numOfFeats = 24, outName = "bm_cd34_subset_braches",
-#             outDir = "../output/viln/allCells/", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"), assay = "RNA", 
-#             min.pct = 0.25, only.pos = T)
-
-# #gsea on susspected mast cells to confirm ID -- does not clearly confirm, susspect they are HPSCs
-# markers.df <- read.csv("../output/viln/allCells/bm_cd34_subset_braches_gene_list.csv")
-# susMastCells <- markers.df[markers.df$cluster == "mast", ] %>% filter(p_val_adj < 0.01) %>% pull(gene)
-# p <- plotGSEA(
-#     geneList = susMastCells,
-#     category = "C8", species = "dog", upCol = "red", dwnCol = "blue",
-#     pvalueCutoff = 0.05, subcategory = NULL, termsTOplot = 16, upOnly = T, trimTerm = T
-# )
-# ggsave(paste("../output/", outName, "/", outName, "_mast_cell_gsea.png", sep = ""), width = 10, height = 7)
-
-# #rename idents to correct mast cell call to be HPSCs
-# Idents(braches) <- "clusterID_integrated.harmony"
-# seu.obj <- RenameIdents(seu.obj, "mast" = "HPSC") 
-# seu.obj$braches <- Idents(seu.obj)
-# levels(seu.obj$braches) # "HPSC"  "neut"  "mono"  "eryth" "bcell"
-
-# #convert to cluster ID numbers
-# seu.obj <- convertTOclusID(seu.obj = seu.obj, metaSlot = "braches")
-
-
-# ### Generate violin plots of defining features
-# vilnPlots(seu.obj = seu.obj, groupBy = "braches_clusID", numOfFeats = 24, outName = "bm_cd34_subset_braches",
-#             outDir = "../output/viln/allCells/", outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"), assay = "RNA", 
-#             min.pct = 0.25, only.pos = T)
-
-
-# pi <- autoDot(seu.integrated.obj = seu.obj, inFile = "../output/viln/allCells/bm_cd34_subset_braches_gene_list.csv", groupBy = "braches_clusID",
-#                      MIN_LOGFOLD_CHANGE = 0.5, MIN_PCT_CELLS_EXPR_GENE = 0.1,
-#                     filterTerm = "ENSCAFG"
-#                     ) + theme(legend.box="vertical") + scale_fill_manual(values = majorColz)
-# ggsave(paste0("../output/", outName, "/", outName, "_autodot_branches.png"), width = 5, height = 10)
-
-
-# lapply(c("umap.integrated.harmony", "umap.integrated.joint", "umap.integrated.rcpa"), function(x){
-#     pi <- DimPlot(seu.obj, 
-#                   reduction = x,
-#                   group.by = "braches_clusID",
-#                   pt.size = 0.1,
-#                   label = T,
-#                   label.box = T,
-#                   repel = F,
-#     )
-#     p <- cusLabels(plot = pi, smallAxes = T) + NoLegend()
-#     ggsave(plot = p, paste0("../output/", outName, "/", outName, "_",x, ".png"), width = 7, height = 7)
-# })
-
-
-# #modify the reduction parameters
-# seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "subbed_integrated.harmony", 
-#                         final.dims = 45, final.res = 1.4, stashID = "clusterID", algorithm = 3, min.dist = 0.2, n.neighbors = 20,
-#                         prefix = "RNA_snn_res.", assay = "RNA", reduction = "integrated.harmony",
-#                         saveRDS = F, return_obj = T, returnFeats = T,
-#                         features = c("PTPRC", "CD3E", "CD8A", "GZMA", 
-#                                         "IL7R", "ANPEP", "FLT3", "DLA-DRA", 
-#                                         "CD4", "MS4A1", "PPBP","HBM")
-# )
-
-
-# ### plot the data
-# pi <- DimPlot(seu.obj, 
-#               reduction = "umap.integrated.harmony",
-#               group.by = "braches_clusID",
-#               pt.size = 0.1,
-#               cols = majorColz,
-#               label = T,
-#               label.box = T,
-#               repel = F,
-# )
-# p <- cusLabels(plot = pi, smallAxes = T) + NoLegend()
-# ggsave(plot = p, paste0("../output/", outName, "/", outName, "_braches_clusID.png"), width = 7, height = 7)
-
-
-
-# ### Fig supp: run SlingShot
-# sce.obj <- as.SingleCellExperiment(seu.obj)
-# rd1 <- Embeddings(seu.obj, reduction = "pca")[,1:2]
-# rd2 <- Embeddings(seu.obj, reduction = "umap.integrated.harmony")
-# colnames(rd2) <- c('UMAP1', 'UMAP2')
-
-# #assign origin -- left most hpsc population
-# start.clus <- '2'
-# end.clus <- c('1','8','15','11','16','7','10')
-
-# reducedDims(sce.obj) <- SimpleList(PCA = rd1, UMAP = rd2)
-
-# sce.obj <- slingshot(sce.obj, clusterLabels = 'clusterID_integrated.harmony', reducedDim = 'UMAP', start.clus = start.clus, end.clus = end.clus)
-
-# #identify lineages
-# lin1 <- getLineages(Embeddings(seu.obj, reduction = "umap.integrated.harmony"), sce.obj$clusterID_integrated.harmony, start.clus = start.clus, end.clus = end.clus)
-# branchData <- SlingshotDataSet(lin1)@lineages
-
-# #plot the lineages
-# plot <- DimPlot(seu.obj, 
-#               reduction = "umap.integrated.harmony", 
-#               group.by = "clusterID_integrated.harmony",
-#               pt.size = 0.25,
-#               label = TRUE,
-#               label.box = TRUE
-#  )
-
-# p <- cleanSling(plot = plot, shape = 21, labCol = "black", size = 8, alpha = 1, rm.na = T, branchData = branchData) + NoLegend()
-# ggsave(paste("../output/", outName, "/", outName, "_bracnch.png", sep = ""), width = 7, height = 7)
-
-# #get the meta data over - to the seurat object
-# metaData <- as.data.frame(sce.obj@colData@rownames)
-# colnames(metaData) <- "barcode"
-# metaData$slingPseudotime_1 <- sce.obj$slingPseudotime_1
-# metaData$slingPseudotime_2 <- sce.obj$slingPseudotime_2
-# metaData$slingPseudotime_3 <- sce.obj$slingPseudotime_3
-# metaData$slingPseudotime_4 <- sce.obj$slingPseudotime_4
-# metaData$slingPseudotime_5 <- sce.obj$slingPseudotime_5
-# metaData$slingPseudotime_6 <- sce.obj$slingPseudotime_6
-# # metaData$slingPseudotime_7 <- sce.obj$slingPseudotime_7
-
-# metaData <- metaData %>% rowwise %>% mutate(pseudoTime = mean(c(slingPseudotime_1,slingPseudotime_2,slingPseudotime_3,slingPseudotime_4,slingPseudotime_5,slingPseudotime_6),na.rm=TRUE)) #,slingPseudotime_7
-
-# seuMeta <- seu.obj@meta.data %>% mutate(barcode = rownames(.))
-# seuMeta <- seuMeta[ ,!grepl("slingPseudotime|pseudoTime", colnames(seuMeta))]
-
-# newMeta <- seuMeta %>% left_join(metaData, by = 'barcode')
-# rownames(newMeta) <- newMeta$barcode
-# seu.obj@meta.data <- newMeta
-
-# #plot the lineages on original umap rep
-# features <- c("slingPseudotime_1","slingPseudotime_2","slingPseudotime_3","slingPseudotime_4","slingPseudotime_5","slingPseudotime_6")
-# titles <- c("Lineage 1","Lineage 2","Lineage 3","Lineage 4","Lineage 5","Lineage 6")
-
-# p <- prettyFeats(seu.obj = seu.obj, reduction = "umap.integrated.harmony",nrow = 2, ncol = 3, features = features, color = "black", order = F, titles = titles, noLegend = T) + theme(legend.position = 'bottom') + guides(color = guide_colourbar(barwidth = 1)) + plot_layout(guides = "collect") & scale_colour_viridis(na.value="grey")
-
-# ggsave(paste("../output/", outName, "/", outName, "_pseudoTime.png", sep = ""), width = 9, height = 6)
-
-
-# features <- "pseudoTime"
-# titles <- "All time"
-
-# p <- prettyFeats(seu.obj = seu.obj, reduction = "umap.integrated.harmony",nrow = 1, ncol = 1, features = features, color = "black", order = F, titles = titles, noLegend = T) + theme(legend.position = 'bottom') + guides(color = guide_colourbar(barwidth = 1)) + plot_layout(guides = "collect") & scale_colour_viridis(na.value="grey")
-
-# ggsave(paste("../output/", outName, "/", outName, "_pseudoTime_all.png", sep = ""), width = 3, height = 3)
-
-
-
-
-
-
-
-
 
 
 
