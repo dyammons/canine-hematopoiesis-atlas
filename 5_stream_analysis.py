@@ -1,12 +1,17 @@
-# singularity shell -B $PWD/../../../ ../../../../shared/software/containers/stream_latest.sif
+# singularity shell -B $PWD/../../../ ../../../../shared/software/containers/stream
 
 # ### DO NOT RUN
 # #export the processed object from R to an anndata object
-# #run in a ../software/r4.3.2-seuratv5_v2 session
-# seu.obj <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.6_dims45_dist0.15_neigh20_S3.rds")
+# #run in a ../software/r4.3.2-seuratv5_v2 R session
+# seu.obj <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.rds")
+# seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majorID")
+# seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
+# seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majCol")
+# seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "majCol", metaAdd = "labCol")
+# 
 # seu.obj[["RNA"]] <- as(object = seu.obj[["RNA"]], Class = "Assay")
-# SaveH5Seurat(seu.obj, filename = "../output/s3/allCells_clean_highRes_integrated.harmony_res1.6_dims45_dist0.15_neigh20_S3.h5Seurat", verbose = TRUE, overwrite = T)
-# Convert("../output/s3/allCells_clean_highRes_integrated.harmony_res1.6_dims45_dist0.15_neigh20_S3.h5Seurat", dest = "h5ad", overwrite = T)
+# SaveH5Seurat(seu.obj, filename = "../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.h5Seurat", verbose = TRUE, overwrite = T)
+# Convert("../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.h5Seurat", dest = "h5ad", overwrite = T)
 # write.table(seu.obj$clusterID2_integrated.harmony, file = "./metaData/stream_lab.tsv", sep="\t", col.names = F)
 # write.table(seu.obj$majCol, file = "./metaData/stream_col.tsv", sep="\t", col.names = F)
 
@@ -17,16 +22,31 @@ sc.__version__
 import stream as st
 st.__version__
 from matplotlib import pyplot as plt
+import pandas as pd
+
 
 #set params and read in data
 st.set_figure_params(dpi=80,style='white',figsize=[5.4,4.8],
                      rc={'image.cmap': 'viridis'})
 
-adata = sc.read_h5ad("../output/s3/allCells_clean_highRes_integrated.harmony_res1.6_dims45_dist0.15_neigh20_S3.h5ad")
-st.add_cell_labels(adata,file_path='./metaData/',file_name='stream_col.tsv')
+adata = sc.read_h5ad("../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.h5ad")
+st.add_cell_labels(adata, file_name='./metaData/stream_col.tsv')
 adata.obs[['label_color']] = adata.obs[['label']]
-st.add_cell_labels(adata,file_name='./metaData/stream_lab.tsv')
+st.add_cell_labels(adata, file_name='./metaData/stream_lab.tsv')
+
+colz_df = pd.read_csv('./metaData/allCells_ID_disconected_highRes.csv')
+colz_df[['clusterID2_integrated']] = colz_df[['clusterID2_integrated.harmony']].astype(str)
+colz_dict = dict(zip(colz_df.clusterID2_integrated, colz_df.majCol.astype(str)))
+
+# adata.obs[['label']] = adata.obs[['celltype']]
+# adata.obs[['label_color']] = adata.obs[['majCol']]
 st.set_workdir(adata,'../output/stream_results')
+
+#not working
+# st.add_cell_colors(adata,file_name='./cell_label_color.tsv.gz')
+# st.add_cell_labels(adata,file_path='./metaData/',file_name='stream_col.tsv')
+# st.add_cell_labels(adata,file_name='./metaData/stream_lab.tsv')
+
 
 ### All skipped b/c already preprocessed data
 # #clean anndata
@@ -75,9 +95,10 @@ st.extend_elastic_principal_graph(adata, epg_ext_mode='WeigthedCentroid',epg_ext
 st.plot_dimension_reduction(adata,color=['majorID'],n_components=2,show_graph=True,show_text=True)
 plt.savefig('../output/stream_results/foo.png')
 
-st.plot_stream(adata,root='S9',color=['label_color'],log_scale=True,fig_size=(8,6),fig_legend_ncol=1)
+adata.uns['label_color'] = colz_dict
+st.plot_stream(adata,root='S9',color=['label'],log_scale=True,fig_size=(8,6),fig_legend_ncol=1)
 plt.savefig('../output/stream_results/foo.png')
 
-st.plot_stream_sc(adata,root='S9',color=['label'],dist_scale=0.5,show_graph=True,show_text=False)
+st.plot_stream_sc(adata,root='S9',color=['label'],dist_scale=0.5,show_graph=True,show_text=False,fig_legend_ncol=3)
 plt.savefig('../output/stream_results/foo.png')
 
