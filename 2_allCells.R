@@ -371,9 +371,14 @@ seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = pa
 seu.obj <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.rds")
 table(seu.obj$clusterID2_integrated.harmony, seu.obj$minorIdent)
 seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majorID")
-# seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
 seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majCol")
 seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "majCol", metaAdd = "labCol")
+outName <- "allCells_clean"
+outName_full <- "240201_bm_cd34_clusterID_integrated.harmony"
+clusID_main <- "clusterID_integrated.harmony"
+reduction <- "umap.integrated.harmony"
+
 
 #create umap
 colz.df <- read.csv("./metaData/allCells_ID_disconected_highRes.csv")
@@ -404,12 +409,12 @@ ggsave(paste0("../output/", outName, "/", outName, "_minorIdents_UMAP.png"), wid
 
 
 #set levels for ordering
-seu.obj$clusterID2_integrated.harmony <- factor(seu.obj$clusterID2_integrated.harmony, levels = c(11,5,4,
+seu.obj$clusterID2_integrated.harmony <- factor(seu.obj$clusterID2_integrated.harmony, levels = rev(c(11,5,4,
                                                                                                   24,19,16,
                                                                                                   12,27,15,25,
                                                                                                   9,23,10,21,6,8,0,3,2,26,
                                                                                                   28,20,14,13,7,22,1,18,17
-                                                                                                  )
+                                                                                                  ))
                                                )
 
 ### Supp data - generate violin plots of defining features
@@ -418,26 +423,26 @@ vilnPlots(seu.obj = seu.obj, groupBy = "clusterID2_integrated.harmony", numOfFea
             min.pct = 0.25, only.pos = T, returnViln = F)
 
 
-colz <- colz.df$majCol[(1+c(11,5,4,
+colz <- colz.df$majCol[(1+rev(c(11,5,4,
                             24,19,16,
                             12,27,15,25,
                             9,23,10,21,6,8,0,3,2,26,
                             28,20,14,13,7,22,1,18,17
-                            ))]
+                            )))]
 
 
 #make auto dot plot
 pi <- autoDot(seu.integrated.obj = seu.obj, inFile = "../output/viln/allCells_clean/allCells_clean_clusterID2_integrated.harmony_gene_list.csv", groupBy = "clusterID2_integrated.harmony",
               MIN_LOGFOLD_CHANGE = 0.5, MIN_PCT_CELLS_EXPR_GENE = 0.1, n_feat = 3, filterTerm = "ENSCAFG", 
-              lvls = c(11,5,4,
+              lvls = rev(c(11,5,4,
                                                                                                   24,19,16,
                                                                                                   12,27,15,25,
                                                                                                   9,23,10,21,6,8,0,3,2,26,
                                                                                                   28,20,14,13,7,22,1,18,17
-                                                                                                  ) 
-                    ) + theme(legend.box="vertical",
-                              legend.position = "right") + scale_fill_manual(values = colz)
-ggsave(paste0("../output/", outName, "/", outName, "_autodot_branches.png"), width = 16, height = 16)
+                                                                                                  ))
+                    ) + #theme(legend.box="vertical", legend.position = "right") + 
+scale_fill_manual(values = colz) 
+ggsave(paste0("../output/", outName, "/", outName, "_autodot_branches.png"), width = 16, height = 10)
 
 
 ### Fig 3e - heatmap by cluster
