@@ -122,18 +122,19 @@ message(paste0(Sys.time(), " INFO: file saved. moving to plot hierchical cluster
 seu.obj$cellSource <- ifelse(grepl("Manton", seu.obj$orig.ident), "Human", "Canine")
 
 #load in the processed data for further work up
-seu.obj.k9_anno <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.6_dims45_dist0.15_neigh20_S3.rds")
+seu.obj.k9_anno <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.rds")
 seu.obj.k9_anno <- loadMeta(seu.obj = seu.obj.k9_anno, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
-df <- seu.obj.k9_anno@meta.data %>% rownames_to_column() %>% select(rowname, celltype)
-df <- seu.obj@meta.data %>% rownames_to_column() %>% left_join(df, by = "rowname")
-table(is.na(df$celltype))
-df <- df %>% mutate(celltype = ifelse(cellSource == "Canine", 
-                                      ifelse(is.na(celltype), as.character(minorIdent), as.character(celltype)), NA))
-table(is.na(df$celltype))
-table(seu.obj$cellSource)
-rownames(df) <- df$rowname
-df$rowname <- NULL
-seu.obj@meta.data <- df
+seu.obj.k9_anno <- loadMeta(seu.obj = seu.obj.k9_anno, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majorID")
+k9_anno.celltype  <- seu.obj.k9_anno@meta.data %>% tibble::rownames_to_column(., "rownames") %>% pull(celltype, name = rownames)
+k9_anno.major  <- seu.obj.k9_anno@meta.data %>% tibble::rownames_to_column(., "rownames") %>% pull(majorID, name = rownames)
+rm(seu.obj.k9_anno)
+gc()
+
+seu.obj <- AddMetaData(seu.obj, metadata = k9_anno, col.name = "celltype")
+seu.obj <- AddMetaData(seu.obj, metadata = k9_anno, col.name = "majorID")
+
+
+
 
 seu.obj$type <- as.factor(ifelse(grepl("Canine", seu.obj$cellSource), paste0("c_", seu.obj$celltype), paste0("hu_", seu.obj$mantonID)))
 table(seu.obj$type)
@@ -264,60 +265,95 @@ dev.off()
 
 
 
-# ### Transfer labels over from 
-# hu.reference <- readRDS("../output/s3/manton_ref_res0.8_dims45_dist0.2_neigh20_S3.rds")
+### Transfer labels from human dataset to canine
 
-# #transfer scArches_Cluster annotations
-# ref.anchors <- FindTransferAnchors(reference = hu.reference, query = seu.obj, dims = 1:30,
-#     reference.reduction = "pca", features = rownames(seu.obj)[rownames(seu.obj) %in% rownames(hu.reference)])
-# predictions <- TransferData(anchorset = ref.anchors, refdata = hu.reference$mantonID, dims = 1:30)
-# seu.obj <- AddMetaData(seu.obj, metadata = predictions)
+#load human data
+hu.reference <- readRDS("../output/s3/manton_ref_res0.8_dims45_dist0.2_neigh20_S3.rds")
 
+#load in preprocessed data
+seu.obj <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.rds")
+table(seu.obj$clusterID2_integrated.harmony, seu.obj$minorIdent)
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majorID")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majCol")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "majCol", metaAdd = "labCol")
+seu.obj$clusterID2_integrated.harmony <- factor(seu.obj$clusterID2_integrated.harmony, levels = 0:max(as.numeric(names(table(seu.obj$clusterID2_integrated.harmony)))))
 
-# #plot the previously annotated labels (only for healthy cells)
-# pi <- DimPlot(seu.obj, 
-#               reduction = "umap.integrated.harmony", 
-#               group.by = "predicted.id",
-#               split.by = "predicted.id",
-#               pt.size = 0.1,
-#               ncol = 5,
-#               repel = F
-# )
-# p <- formatUMAP(plot = pi) + NoLegend()
-# ggsave(paste0("../output/", outName, "/", outName, "_mantonID_split_UMAP.png"), width = 14, height = 14)
+#set output and plotting parameters
+outName <- "human_k9_comp"
+clusID_main <- "clusterID2_integrated.harmony"
+reduction <- "umap.integrated.harmony"
 
 
-# #plot transfered labels
-# pi <- DimPlot(seu.obj, 
-#               reduction = "umap.integrated.harmony", 
-#               group.by = "predicted.id",
-#               pt.size = 0.1,
-#               label = T,
-#               label.box = T,
-#               repel = T
-# )
-# p <- formatUMAP(plot = pi) + NoLegend()
-# ggsave(paste0("../output/", outName, "/", outName, "_mantonID_transfer_UMAP.png"), width = 7, height = 7)
+#transfer scArches_Cluster annotations
+ref.anchors <- FindTransferAnchors(reference = hu.reference, query = seu.obj, 
+                                   dims = 1:30, reference.reduction = "pca", 
+                                   features = rownames(seu.obj)[rownames(seu.obj) %in% rownames(hu.reference)])
+predictions <- TransferData(anchorset = ref.anchors, 
+                            refdata = hu.reference$mantonID, 
+                            dims = 1:30)
+seu.obj <- AddMetaData(seu.obj, 
+                       metadata = predictions)
+
+rm(hu.reference)
+gc()
+
+library(Nebulosa)
+plot_density(seu.obj, c("prediction.score.CD34..HSC", "prediction.score.CD34..HSC.cycle"),
+             joint = T, 
+            reduction = reduction)
+
+p_list <- plot_density(seu.obj, c("prediction.score.CD34..HSC", "prediction.score.CD34..HSC.cycle"), joint = TRUE, combine = FALSE,reduction = reduction)
+p <- p_list[[length(p_list)]]
+formatUMAP(p) + NoLegend() + theme(axis.title = element_blank(),
+                                   strip.text = element_blank(),
+                                   plot.title = element_text(hjust = 0.5),
+                                   panel.border = element_blank(),
+                                   axis.ticks = element_blank()
+                                  ) + ggtitle("CD34+ HSC")
+ggsave(paste0("../output/", outName, "/", outName, "_nebulous_UMAP.png"), width = 7, height = 7)
 
 
-# #transfer lsc_class annotations
-# predictions <- TransferData(anchorset = ref.anchors, refdata = hu.reference$lsc_class, dims = 1:30)
-# seu.obj <- AddMetaData(seu.obj, metadata = predictions)
+p <- plot_density(seu.obj, "prediction.score.CD34..MultiLin", reduction = reduction)
+formatUMAP(p) + NoLegend() + theme(axis.title = element_blank(),
+                                   strip.text = element_blank(),
+                                   plot.title = element_text(hjust = 0.5),
+                                   panel.border = element_blank(),
+                                   axis.ticks = element_blank()
+                                  ) + ggtitle("CD34+ Multi-lineage")
+ggsave(paste0("../output/", outName, "/", outName, "_nebulous_UMAP.png"), width = 7, height = 7)
 
 
-# seu.obj$predicted.id <- factor(seu.obj$predicted.id)
-# #inspect data for proper import -- looks good
-# pi <- DimPlot(seu.obj, 
-#               reduction = "umap.integrated", 
-#               group.by = "predicted.id",
-#               split.by = "predicted.id",
-#               pt.size = 0.1,
-#               ncol = 3,
-#               label = F,
-#               label.box = F,
-#               repel = F
-# ) + NoLegend()
-# ggsave(paste0("../output/", outName, "/", outName, "_lsc_class_transfer_UMAP.png"), width = 12, height = 4)
+p <- plot_density(seu.obj, "prediction.score.CD34..LMPP", reduction = reduction)
+formatUMAP(p) + NoLegend() + theme(axis.title = element_blank(),
+                                   strip.text = element_blank(),
+                                   plot.title = element_text(hjust = 0.5),
+                                   panel.border = element_blank(),
+                                   axis.ticks = element_blank()
+                                  ) + ggtitle("CD34+ LMPP")
+ggsave(paste0("../output/", outName, "/", outName, "_nebulous_UMAP.png"), width = 7, height = 7)
+
+
+p_list <- plot_density(seu.obj, c("prediction.score.CD34..MDP.1", "prediction.score.CD34..MDP.2"), joint = TRUE, combine = FALSE,reduction = reduction)
+p <- p_list[[length(p_list)]]
+formatUMAP(p) + NoLegend() + theme(axis.title = element_blank(),
+                                   strip.text = element_blank(),
+                                   plot.title = element_text(hjust = 0.5),
+                                   panel.border = element_blank(),
+                                   axis.ticks = element_blank()
+                                  ) + ggtitle("CD34+ MDP")
+ggsave(paste0("../output/", outName, "/", outName, "_nebulous_UMAP.png"), width = 7, height = 7)
+
+p <- plot_density(seu.obj, "prediction.score.CD34..MEP", reduction = reduction)
+formatUMAP(p) + NoLegend() + theme(axis.title = element_blank(),
+                                   strip.text = element_blank(),
+                                   plot.title = element_text(hjust = 0.5),
+                                   panel.border = element_blank(),
+                                   axis.ticks = element_blank()
+                                  ) + ggtitle("CD34+ MEP")
+ggsave(paste0("../output/", outName, "/", outName, "_nebulous_UMAP.png"), width = 7, height = 7)
+
+
 
 #update user of completion
 message(paste0(Sys.time(), " INFO: end of script!"))
