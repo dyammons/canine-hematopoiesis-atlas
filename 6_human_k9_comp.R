@@ -11,7 +11,7 @@ message(paste0(Sys.time(), " INFO: initating code."))
 seu.obj <- readRDS("../output/s3/manton_ref_res0.8_dims45_dist0.2_neigh20_S3.rds")
 seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/manton_majorID.csv", groupBy = "mantonID", metaAdd = "majorID_human")
 exclude <- unlist(lapply(1:8, function(x){
-    namez <- lapply(c(1,3,5:8), function(y){
+    namez <- lapply(c(1,3,5,7), function(y){
         namez <- paste0("MantonBM", x, "_HiSeq_",y)
     })
     namez <- unlist(namez)
@@ -23,39 +23,6 @@ outName <- "human_k9_comp"
 #set metadata levels to compare
 hu.meta <- "mantonID"
 dog.meta <- "minorIdent"
-
-# ### Fig - plot the umap with cell annotations - no label
-# pi <- DimPlot(seu.obj, 
-#               reduction = "umap.integrated", 
-#               group.by = "mantonID",
-#               pt.size = 0.1,
-#               label = F,
-#               label.box = F,
-#               raster = F,
-#               repel = F
-# )
-# p <- formatUMAP(plot = pi) + NoLegend()
-# ggsave(paste0("../output/", outName, "/", outName, "_UMAP_hu_noLabs.png"), width = 7, height = 7)
-
-
-# ### Fig - plot the umap with cell annotations - labeled
-# pi <- DimPlot(seu.obj, 
-#               reduction = "umap.integrated", 
-#               group.by = "mantonID",
-#               pt.size = 0.1,
-#               label = T,
-#               label.box = T,
-#               raster = F,
-#               repel = F
-# )
-# p <- formatUMAP(plot = pi) + NoLegend()
-# ggsave(paste0("../output/", outName, "/", outName, "_UMAP_hu.png"), width = 7, height = 7)
-
-
-# ### Data supplemental - generate violin plots of defining features
-# vilnPlots(seu.obj = seu.obj, groupBy = "mantonID", numOfFeats = 24, outName = "manton_bm",
-#                       outDir = paste0("../output/viln/", outName, "/"), outputGeneList = T, filterOutFeats = c("^MT-", "^RPL", "^RPS"), assay = "RNA", 
-#                       min.pct = 0.25, only.pos = T)
 
 
 ### Integrate cross-species
@@ -76,6 +43,12 @@ rownames(cnts) <- unname(rownames(cnts))
 seu.obj.k9 <- CreateSeuratObject(cnts, project = "humanConvert", assay = "RNA",
                                   min.cells = 0, min.features = 0, names.field = 1,
                                   names.delim = "_", meta.data = seu.obj.k9@meta.data)
+
+#clean objects to only have common features included
+seu.obj.k9 <- DietSeurat(seu.obj.k9, assays = "RNA", layers = "counts",
+                         features = intersect(rownames(seu.obj.k9), rownames(seu.obj)))
+seu.obj <- DietSeurat(seu.obj, assays = "RNA", layers = "counts",
+                      features = intersect(rownames(seu.obj.k9), rownames(seu.obj)))
 
 #split then merge objects
 message(paste0(Sys.time(), " INFO: splitting data from k9 and human."))
@@ -101,8 +74,6 @@ seu.obj <- integrateData_v4(seu.list = seu.list, outDir = "../output/s2/", subNa
                            )
 rm(seu.list)
 gc()
-
-stop()
 
 # seu.obj <- readRDS("../output/s2/human_k9_connected_S2.rds")
 #complete data visualization & save the RDS file
@@ -145,10 +116,9 @@ seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "i
 gc()
 
 
-
 #update user
 message(paste0(Sys.time(), " INFO: file saved. moving to plot hierchical clustering."))
-
+stop()
 
 #reload in the integrated object
 # seu.obj <- readRDS("../output/s3/integrated_v4_res0.8_dims45_dist0.2_neigh20_S3.rds")
