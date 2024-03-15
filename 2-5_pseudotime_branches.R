@@ -20,9 +20,10 @@ clusID_main <- "clusterID2_integrated.harmony"
 reduction <- "umap.integrated.harmony"
 
 
-##################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-#######   Begin lineage analysis (monocle3)  ######## <<<<<<<<<<<<<<
-##################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+######################################################## <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#######   Begin pseudotime analysis (monocle3)  ######## <<<<<<<<<<<<<<
+######################################################## <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
 
 ### Do not run -- use code block below
 ### The noted code completes monocle precrocessing then run trajectory analysis.
@@ -133,6 +134,22 @@ dev.off()
 saveRDS(cds, file = "../output/s3/240314_CDS_bm_cd34_highRES.rds")
 
 
+###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#######   End pseudotime analysis (monocle3)  ######## <<<<<<<<<<<<<<
+###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+# NOTE: can skip the monocle code and load in from checkpoint!
+# Load from "../output/s3/240314_CDS_bm_cd34_highRES.rds"
+
+############################################## <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#######   Beging plotting (monocle3)  ######## <<<<<<<<<<<<<<
+############################################## <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+#Resume
+cds <- readRDS("../output/s3/240314_CDS_bm_cd34_highRES.rds")
+ptime <- pseudotime(cds, reduction_method = "UMAP")
+seu.obj$ptime <- ptime
+
 ### Run analysis on neutrophilic branch
 
 features <- c("MPO","CAMP","CD4","SELL") #only works with 1 feat rn
@@ -142,9 +159,6 @@ clus <- c("Neutrophilic")
 rmZeros <- F #option to remove zero values - probablaly can keep it at false
 bin.size <- 5
 
-#gene expression by pseudotime
-ptime <- pseudotime(cds, reduction_method = "UMAP")
-seu.obj$ptime <- ptime
 
 seu.obj.sub <- subset(seu.obj, majorID %in% clus)
 single.plot <- lapply(features, function(x){
@@ -280,6 +294,140 @@ p <- RidgePlot(seu.obj.sub, features = "ptime.sub",
 ggsave(paste0("../output/", outName, "/", outName, "_ridge.png"), width = 7, height = 4)
 
 
+### Run analysis on Monocytic branch
+
+features <- c("MAFB","LY86","CD300H","SPATS2L") #only works with 1 feat rn
+colorBy <- "clusterID2_integrated.harmony" #seu metadata slot to color data by
+plotBy <- "ptime" #pseudotime data to use on the x axis -- match with the name of a metadata slot
+clus <- "Monocytic"
+rmZeros <- F #option to remove zero values - probablaly can keep it at false
+bin.size <- 5
+
+seu.obj.sub <- subset(seu.obj, majorID %in% clus)
+single.plot <- lapply(features, function(x){
+    df <- FetchData(object = seu.obj.sub, vars = c('cellSource', 'name', colorBy, plotBy, x), layer = "data")
+    colnames(df)[3] <- "cluster"
+    colnames(df)[5] <- "feature"
+
+    if(rmZeros){
+        df <- df[df[ ,"feature"] > 0, ]
+    }
+
+    df <- df %>% na.omit() %>% mutate(feat = x,
+                                      ptime = (ptime - sort(ptime)[3]) / (rev(sort(ptime))[3] - sort(ptime)[3]) 
+                                     ) %>% arrange(ptime) %>% mutate(avg = zoo::rollmean(feature, k = bin.size, fill = NA))
+    return(df)
+})
+
+df <- do.call(rbind, single.plot) %>% na.omit() 
+
+colz.df <- read.csv("./metaData/allCells_ID_disconected_highRes.csv")
+colz.df <- colz.df %>% filter(majorID == clus) %>% arrange(desc(order))
+df$feat <- factor(df$feat, levels = features)
+p <- ggplot(data = df, aes(x = ptime, y = avg, color = cluster)) + theme_classic() + facet_wrap(vars(feat), ncol = 1, scales = "free_y") + geom_point() +
+geom_smooth(se = FALSE, colour = "black")  + labs(x = "Pseudotime", y = "Log2 normalized count") + NoLegend() + scale_colour_manual(values = colz.df$majCol) +
+scale_x_continuous(breaks = c(0,1))
+ggsave(paste0("../output/", outName, "/", outName, "_feats_byTime.png"), width = 4, height = 6)
+
+
+#create legend
+cusLeg(legend = colz.df, colz = 2, rowz = 2, clusLabel = "clusterID2_integrated.harmony", legLabel = "celltype", groupLabel = "majorID", colorz = "majCol", dotSize = 8,
+                   groupBy = "", sortBy = "order", labCol = "labCol", headerSize = 6, #add if len labCol == 1 then add col to the df
+                   cellHeader = T, bump = 2, nudge_left = 0, nudge_right = 0, topBuffer = 1.05, ymin = 0, compress_y = 5, compress_x = 0.75, titleOrder = NULL, spaceBtwnCols = 0.4, breakGroups = T, horizontalWrap = T, returnData = F, overrideData = NULL
+                     )
+ggsave(paste0("../output/", outName, "/", outName, "_legend.png"), width = 4, height = 4)
+
+#create umap with branch pseudotime
+seu.obj$ptime.sub <- NULL
+ptime.sub <- df %>% tibble::rownames_to_column(., "rownames") %>% filter(feat == features[1]) %>% pull(ptime, name = rownames)
+seu.obj <- AddMetaData(seu.obj, metadata = ptime.sub, col.name = "ptime.sub")
+p <- prettyFeats(seu.obj = seu.obj, 
+                 reduction = "umap.integrated.harmony",
+                 nrow = 1, ncol = 1, 
+                 features = "ptime.sub", color = "black", 
+                 order = F, titles = NA,
+                 noLegend = T) + theme(legend.position = 'bottom') + guides(color = guide_colourbar(barwidth = 1)) + plot_layout(guides = "collect") & scale_colour_viridis(na.value="grey")
+
+p <- FeaturePlot(seu.obj, features = "ptime.sub", reduction = reduction) 
+pi <- formatUMAP(p, smallAxes = T) & scale_colour_viridis(na.value = "grey")
+ggsave(paste0("../output/", outName, "/", outName, "_pTime.png"), width = 7, height = 7)
+
+#make ridge plot
+seu.obj.sub <- AddMetaData(seu.obj.sub, metadata = ptime.sub, col.name = "ptime.sub")
+seu.obj.sub$celltype <- factor(seu.obj.sub$celltype, levels = rev(colz.df$celltype))
+p <- RidgePlot(seu.obj.sub, features = "ptime.sub",
+               group.by = "celltype",
+               cols = colz.df$majCol) + NoLegend() + theme(axis.title = element_blank(),
+                                                           plot.title = element_blank())
+ggsave(paste0("../output/", outName, "/", outName, "_ridge.png"), width = 7, height = 4)
+
+
+### Run analysis on Lymphocytic branch
+
+features <- c("IL7R","TOX2","PAX5","MS4A1") #only works with 1 feat rn
+colorBy <- "clusterID2_integrated.harmony" #seu metadata slot to color data by
+plotBy <- "ptime" #pseudotime data to use on the x axis -- match with the name of a metadata slot
+clus <- "Lymphocytic"
+rmZeros <- F #option to remove zero values - probablaly can keep it at false
+bin.size <- 5
+
+seu.obj.sub <- subset(seu.obj, majorID %in% clus)
+single.plot <- lapply(features, function(x){
+    df <- FetchData(object = seu.obj.sub, vars = c('cellSource', 'name', colorBy, plotBy, x), layer = "data")
+    colnames(df)[3] <- "cluster"
+    colnames(df)[5] <- "feature"
+
+    if(rmZeros){
+        df <- df[df[ ,"feature"] > 0, ]
+    }
+
+    df <- df %>% na.omit() %>% mutate(feat = x,
+                                      ptime = (ptime - sort(ptime)[3]) / (rev(sort(ptime))[3] - sort(ptime)[3]) 
+                                     ) %>% arrange(ptime) %>% mutate(avg = zoo::rollmean(feature, k = bin.size, fill = NA))
+    return(df)
+})
+
+df <- do.call(rbind, single.plot) %>% na.omit() 
+
+colz.df <- read.csv("./metaData/allCells_ID_disconected_highRes.csv")
+colz.df <- colz.df %>% filter(majorID == clus) %>% arrange(desc(order))
+df$feat <- factor(df$feat, levels = features)
+p <- ggplot(data = df, aes(x = ptime, y = avg, color = cluster)) + theme_classic() + facet_wrap(vars(feat), ncol = 1, scales = "free_y") + geom_point() +
+geom_smooth(se = FALSE, colour = "black")  + labs(x = "Pseudotime", y = "Log2 normalized count") + NoLegend() + scale_colour_manual(values = colz.df$majCol) +
+scale_x_continuous(breaks = c(0,1))
+ggsave(paste0("../output/", outName, "/", outName, "_feats_byTime.png"), width = 4, height = 6)
+
+
+#create legend
+cusLeg(legend = colz.df, colz = 2, rowz = 5, clusLabel = "clusterID2_integrated.harmony", legLabel = "celltype", groupLabel = "majorID", colorz = "majCol", dotSize = 8,
+                   groupBy = "", sortBy = "order", labCol = "labCol", headerSize = 6, #add if len labCol == 1 then add col to the df
+                   cellHeader = T, bump = 2, nudge_left = 0, nudge_right = 0, topBuffer = 1.05, ymin = 0, compress_y = 5, compress_x = 0.75, titleOrder = NULL, spaceBtwnCols = 0.4, breakGroups = T, horizontalWrap = T, returnData = F, overrideData = NULL
+                     )
+ggsave(paste0("../output/", outName, "/", outName, "_legend.png"), width = 4, height = 4)
+
+#create umap with branch pseudotime
+seu.obj$ptime.sub <- NULL
+ptime.sub <- df %>% tibble::rownames_to_column(., "rownames") %>% filter(feat == features[1]) %>% pull(ptime, name = rownames)
+seu.obj <- AddMetaData(seu.obj, metadata = ptime.sub, col.name = "ptime.sub")
+p <- prettyFeats(seu.obj = seu.obj, 
+                 reduction = "umap.integrated.harmony",
+                 nrow = 1, ncol = 1, 
+                 features = "ptime.sub", color = "black", 
+                 order = F, titles = NA,
+                 noLegend = T) + theme(legend.position = 'bottom') + guides(color = guide_colourbar(barwidth = 1)) + plot_layout(guides = "collect") & scale_colour_viridis(na.value="grey")
+
+p <- FeaturePlot(seu.obj, features = "ptime.sub", reduction = reduction) 
+pi <- formatUMAP(p, smallAxes = T) & scale_colour_viridis(na.value = "grey")
+ggsave(paste0("../output/", outName, "/", outName, "_pTime.png"), width = 7, height = 7)
+
+#make ridge plot
+seu.obj.sub <- AddMetaData(seu.obj.sub, metadata = ptime.sub, col.name = "ptime.sub")
+seu.obj.sub$celltype <- factor(seu.obj.sub$celltype, levels = rev(colz.df$celltype))
+p <- RidgePlot(seu.obj.sub, features = "ptime.sub",
+               group.by = "celltype",
+               cols = colz.df$majCol) + NoLegend() + theme(axis.title = element_blank(),
+                                                           plot.title = element_blank())
+ggsave(paste0("../output/", outName, "/", outName, "_ridge.png"), width = 7, height = 4)
 
 # ###################################################### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # #######   Begin lineage analysis (slingshot)  ######## <<<<<<<<<<<<<<
