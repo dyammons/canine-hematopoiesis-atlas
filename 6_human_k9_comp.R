@@ -121,7 +121,7 @@ message(paste0(Sys.time(), " INFO: file saved. moving to plot hierchical cluster
 #tag cell type labels with species labels to provide contrast
 seu.obj$cellSource <- ifelse(grepl("Manton", seu.obj$orig.ident), "Human", "Canine")
 
-#load in the processed data for further work up
+#load in canine data and extract required annotations
 seu.obj.k9_anno <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.rds")
 seu.obj.k9_anno <- loadMeta(seu.obj = seu.obj.k9_anno, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
 seu.obj.k9_anno <- loadMeta(seu.obj = seu.obj.k9_anno, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majorID")
@@ -130,42 +130,55 @@ k9_anno.major  <- seu.obj.k9_anno@meta.data %>% tibble::rownames_to_column(., "r
 rm(seu.obj.k9_anno)
 gc()
 
-seu.obj <- AddMetaData(seu.obj, metadata = k9_anno, col.name = "celltype")
-seu.obj <- AddMetaData(seu.obj, metadata = k9_anno, col.name = "majorID")
+#load the metadata into the integrated object
+seu.obj <- AddMetaData(seu.obj, metadata = k9_anno.celltype, col.name = "celltype")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/manton_majorID.csv", groupBy = "mantonID", metaAdd = "majorID_human")
+seu.obj <- AddMetaData(seu.obj, metadata = k9_anno.major, col.name = "majorID_canine")
 
-
-
-
+#create cell type metadata with species prefix
+seu.obj$majorID <- as.factor(ifelse(grepl("Canine", seu.obj$cellSource), as.character(seu.obj$majorID_canine), as.character(seu.obj$majorID_human)))
 seu.obj$type <- as.factor(ifelse(grepl("Canine", seu.obj$cellSource), paste0("c_", seu.obj$celltype), paste0("hu_", seu.obj$mantonID)))
-table(seu.obj$type)
+table(seu.obj$majorID, seu.obj$type)
 
-#remove unwanted cell types (aka those that were not annotated)
-Idents(seu.obj) <- "type"
-seu.obj <- subset(seu.obj, invert = T, idents = levels(seu.obj$type)[table(seu.obj$type) < 23][1:16])
-seu.obj$type <- droplevels(seu.obj$type)
+#subset on each lineage & plot
+lapply(c("Erythroid", "Lymphocytic", "Monocytic", "Neutrophilic"), function(x){
+    
+    seu.obj.sub <- subset(seu.obj, subset = majorID == x)
 
-#extract data to plot
-metadata <- seu.obj@meta.data
-expression <- as.data.frame(t(as.matrix(seu.obj@assays$integrated@data)))
-expression$anno_merge <- seu.obj@meta.data[rownames(expression),]$type
+    #extract data to plot
+    metadata <- seu.obj.sub@meta.data
+    expression <- as.data.frame(t(as.matrix(seu.obj.sub@assays$integrated@data)))
+    expression$anno_merge <- seu.obj.sub@meta.data[rownames(expression),]$type
 
-#get average expression by cluster
-avg_expression <- expression %>% group_by(anno_merge) %>% summarise(across(where(is.numeric), sum)) %>% as.data.frame()
-rownames(avg_expression) <- avg_expression$anno_merge
-avg_expression$anno_merge <- NULL
+    #get average expression by cluster
+    avg_expression <- expression %>% group_by(anno_merge) %>% summarise(across(where(is.numeric), sum)) %>% as.data.frame()
+    rownames(avg_expression) <- avg_expression$anno_merge
+    avg_expression$anno_merge <- NULL
 
-#complete heirchical clustering and plot the data using two different methods
-M <- (1- cor(t(avg_expression), method="pearson"))/2
+    #complete heirchical clustering and plot the data using ggtree
+    M <- (1- cor(t(avg_expression), method="pearson"))/2
+    hc <- hclust(as.dist(M),method="complete")
 
-outfile <- paste("../output/", outName, "/", outName, "_phylo.png", sep = "")
-png(file = outfile, width=4000, height=4000, res=400)
-par(mfcol=c(1,1))
-hc <- hclust(as.dist(M),method="complete")
-p <- plot.phylo(as.phylo(hc), type = "fan", cex = 0.8, no.margin = FALSE, tip.col = "black")
-dev.off()
+    df <- as.data.frame(hc$labels)
+    colnames(df) <- "sample"
 
-ggtree(as.phylo(hc), layout = "fan") + geom_tiplab() + NoLegend() + xlim(NA, 0.75)
-ggsave(paste("../output/", outName, "/", outName, "_ggTree.png", sep = ""), width = 9, height = 9) 
+    df$labz <- substr(df$sample, 1, 1)
+    df <- df %>% mutate(colz = case_when(labz == "c" ~ "blue",
+                                         labz == "h" ~ "red"
+                                        ),
+                        shap = case_when(labz == "c" ~ 23,
+                                         labz == "h" ~ 21
+                                        )
+                       )
+
+    df$sample <- gsub("hu_", "  ", df$sample)
+    df$sample <- gsub("c_", "  ", df$sample)
+
+    p <- ggtree(as.phylo(hc)) + xlim(NA,2) + 
+    geom_tippoint(shape = df$shap, size = 5, alpha = 1, colour="black", fill = df$colz) + 
+    geom_tiplab(aes(label = c(df$sample, 1:nrow(hc$merge))), colour="black", size = 5)
+    ggsave(paste("../output/", outName, "/", x, "_ggTree.png", sep = ""), width = 6, height = 4) 
+})
 
 
 ### Use defining features to evaluate cell type gene signature overlap between species
