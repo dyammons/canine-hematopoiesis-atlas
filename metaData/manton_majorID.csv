@@ -1,9 +1,9 @@
-"mantonID",majorID
+"mantonID",majorID_human
 "CD34+ MKP",Erythroid
 "Pro-B",Lymphocytic
 "Early-Erythroblast",Erythroid
 "CD34+ MultiLin",HSC
-"Naive CD8 T-cell"
+"Naive CD8 T-cell",Other
 "Neutrophil",Neutrophilic
 "Erythroblast",Erythroid
 "Follicular B cell",Lymphocytic
@@ -14,9 +14,9 @@
 "Immature-Neutrophil",Neutrophilic
 "CD34+ pre-B",Lymphocytic
 "Monocyte",Monocytic
-"CD34+ Lymphoid UNK",Lymphocytic
+"CD34+ Lymphoid UNK",Other
 "Dendritic Cell",Monocytic
-"Plasma Cell",Lymphocytic
+"Plasma Cell",Other
 "CD34+ ERP",Erythroid
 "Pre-Dendritic",Monocytic
 "CD8 T-cell",Other
@@ -26,7 +26,7 @@
 "CD34+ HSC",HSC
 "CD34+ pre-T",Other
 "CD34+ pre-B cycling",Lymphocytic
-"Granulocytic-UNK",Neutrophilic
+"Granulocytic-UNK",Other
 "CD34+ ERP-Early",Erythroid
 "CD34+ CLP",Lymphocytic
 "CD34+ MDP-2",HSC

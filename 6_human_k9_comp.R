@@ -9,6 +9,7 @@ library(ggtree)
 #load in processed data
 message(paste0(Sys.time(), " INFO: initating code."))
 seu.obj <- readRDS("../output/s3/manton_ref_res0.8_dims45_dist0.2_neigh20_S3.rds")
+seu.obj <- loadMeta(seu.obj = seu.obj, metaFile = "./metaData/manton_majorID.csv", groupBy = "mantonID", metaAdd = "majorID_human")
 exclude <- unlist(lapply(1:8, function(x){
     namez <- lapply(c(1,3,5:8), function(y){
         namez <- paste0("MantonBM", x, "_HiSeq_",y)
@@ -16,6 +17,7 @@ exclude <- unlist(lapply(1:8, function(x){
     namez <- unlist(namez)
 }))
 seu.obj <- subset(seu.obj, invert = T, subset = orig.ident %in% exclude)
+seu.obj <- subset(seu.obj, subset = majorID_human == "Other")
 outName <- "human_k9_comp"
 
 #set metadata levels to compare
@@ -59,7 +61,10 @@ dog.meta <- "minorIdent"
 ### Integrate cross-species
 
 #read in processed k9 data
-seu.obj.k9 <- readRDS("../output/s3/allCellslabTransfer_S3.rds")
+seu.obj.k9 <- readRDS("../output/s3/allCells_clean_highRes_integrated.harmony_res1.4_dims45_dist0.15_neigh20_S3.rds")
+seu.obj.k9 <- loadMeta(seu.obj = seu.obj.k9, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "majorID")
+seu.obj.k9 <- loadMeta(seu.obj = seu.obj.k9, metaFile = "./metaData/allCells_ID_disconected_highRes.csv", groupBy = "clusterID2_integrated.harmony", metaAdd = "celltype")
+
 cnts <- seu.obj.k9@assays$RNA$counts
 cnts <- orthogene::convert_orthologs(gene_df = cnts,
                                         gene_input = "rownames", 
@@ -91,7 +96,7 @@ gc()
 seu.list <- lapply(seu.list, PercentageFeatureSet, pattern = "^MT-", col.name = "percent.mt")
 
 message(paste0(Sys.time(), " INFO: integrating data from k9 and human."))
-seu.obj <- integrateData_v4(seu.list = seu.list, outDir = "../output/s2/", subName = "human_k9",
+seu.obj <- integrateData_v4(seu.list = seu.list, outDir = "../output/s2/", subName = "human_k9_connected",
                             vars.to.regress = "percent.mt", saveRDS = T
                            )
 rm(seu.list)
@@ -101,10 +106,10 @@ gc()
 # seu.obj <- readRDS("../output/s2/human_k9_S2.rds")
 #complete data visualization & save the RDS file
 message(paste0(Sys.time(), " INFO: data integration complete. compeleting dimension reduction and saving integrated object as a .rds file in ../s3/."))
-seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "integrated_v4", 
+seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "integrated_v4_connected", 
                         final.dims = 45, final.res = 0.8, stashID = "clusterID", algorithm = 3, min.dist = 0.2, n.neighbors = 20,
                         prefix = "integrated_snn_res.", assay = "integrated", reduction = "pca",
-                        saveRDS = T, return_obj = T, returnFeats = T,
+                        saveRDS = F, return_obj = T, returnFeats = T,
                         features = c("PTPRC", "CD3E", "CD8A", "GZMA", 
                                         "IL7R", "ANPEP", "FLT3", "HLA-DRA", 
                                         "CD4", "MS4A1", "PPBP","HBM")
@@ -114,6 +119,7 @@ gc()
 #update user
 message(paste0(Sys.time(), " INFO: file saved. moving to plot hierchical clustering."))
 
+stop()
 
 #reload in the integrated object
 # seu.obj <- readRDS("../output/s3/integrated_v4_res0.8_dims45_dist0.2_neigh20_S3.rds")
