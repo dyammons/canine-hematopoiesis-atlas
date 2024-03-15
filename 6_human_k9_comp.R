@@ -17,7 +17,7 @@ exclude <- unlist(lapply(1:8, function(x){
     namez <- unlist(namez)
 }))
 seu.obj <- subset(seu.obj, invert = T, subset = orig.ident %in% exclude)
-seu.obj <- subset(seu.obj, subset = majorID_human == "Other")
+seu.obj <- subset(seu.obj, invert = T, subset =  majorID_human == "Other")
 outName <- "human_k9_comp"
 
 #set metadata levels to compare
@@ -102,12 +102,13 @@ seu.obj <- integrateData_v4(seu.list = seu.list, outDir = "../output/s2/", subNa
 rm(seu.list)
 gc()
 
+stop()
 
-# seu.obj <- readRDS("../output/s2/human_k9_S2.rds")
+# seu.obj <- readRDS("../output/s2/human_k9_connected_S2.rds")
 #complete data visualization & save the RDS file
 message(paste0(Sys.time(), " INFO: data integration complete. compeleting dimension reduction and saving integrated object as a .rds file in ../s3/."))
 seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "integrated_v4_connected", 
-                        final.dims = 45, final.res = 0.8, stashID = "clusterID", algorithm = 3, min.dist = 0.2, n.neighbors = 20,
+                        final.dims = 45, final.res = 0.8, stashID = "clusterID", algorithm = 3, min.dist = 0.1, n.neighbors = 10,
                         prefix = "integrated_snn_res.", assay = "integrated", reduction = "pca",
                         saveRDS = F, return_obj = T, returnFeats = T,
                         features = c("PTPRC", "CD3E", "CD8A", "GZMA", 
@@ -116,10 +117,38 @@ seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "i
 )
 gc()
 
+
+#integrate the data using Seurat v5 approaches
+message(paste0(Sys.time(), " INFO: integrating data from k9 and human using harmony."))
+seu.obj <- integrateData(din = NULL, pattern = NULL,
+                         saveRDS = T, 
+                         outName = outName,  dout = "../output/s2/",
+                         orig.reduction = "pca",
+                         normalization.method = "LogNormalize", 
+                         method = "HarmonyIntegration",
+                         new.reduction.name = "integrated.harmony",
+                         indReClus = TRUE, seu.obj = seu.obj,
+                         runAllMethods = FALSE
+                        )
+gc()
+
+#complete data visualization & save the RDS file
+message(paste0(Sys.time(), " INFO: data integration complete. compeleting dimension reduction and saving integrated object as a .rds file in ../s3/."))
+seu.obj <- dataVisUMAP(seu.obj = seu.obj, outDir = "../output/s3/", outName = "integrated.harmony", 
+                        final.dims = 45, final.res = 0.8, stashID = "clusterID", algorithm = 3, min.dist = 0.1, n.neighbors = 10,
+                        prefix = "RNA_snn_res.", assay = "RNA", reduction = "integrated.harmony",
+                        saveRDS = F, return_obj = T, returnFeats = T,
+                        features = c("PTPRC", "CD3E", "CD8A", "GZMA", 
+                                        "IL7R", "ANPEP", "FLT3", "HLA-DRA", 
+                                        "CD4", "MS4A1", "PPBP","HBM")
+)
+gc()
+
+
+
 #update user
 message(paste0(Sys.time(), " INFO: file saved. moving to plot hierchical clustering."))
 
-stop()
 
 #reload in the integrated object
 # seu.obj <- readRDS("../output/s3/integrated_v4_res0.8_dims45_dist0.2_neigh20_S3.rds")
